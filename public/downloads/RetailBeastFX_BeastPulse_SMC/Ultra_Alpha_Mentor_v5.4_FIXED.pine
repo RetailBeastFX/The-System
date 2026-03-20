@@ -1,0 +1,1490 @@
+// =============================================================================
+// RetailBeastFX: Ultra Alpha Mentor v5.4 — SMART MENTOR EDITION
+// Pine Script Version 6
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW IN v5.4 (built on v5.3 toodegrees candle base):
+//
+//  🎯 KILLZONE FILTERS
+//     • London Open  02:00–05:00 NY  /  New York Open  07:00–10:00 NY
+//     • Elite+ signals ONLY fire inside active killzones
+//     • Standard signals silenced if MTF RSI filter disagrees with bias
+//
+//  📐 DYNAMIC RISK MANAGEMENT
+//     • Auto SL line: below manipulation low (buy) / above manipulation high (sell)
+//     • Auto TP1 / TP2 / TP3: nearest FVG mid, PDH/PDL, session high/low
+//     • R:R displayed inline on entry label
+//
+//  🧠 STATE-AWARE NARRATIVE ALERTS
+//     • Alerts describe exact phase + what to watch for next
+//     • Beginner mode gives full sentence guidance
+//
+//  📊 STEP-BY-STEP GUIDANCE PANEL (second table, bottom-left)
+//     • Step 1: Wait for Midnight Open        ✅ / ⏳
+//     • Step 2: Identify Manipulation Sweep   🔴 flashing / ✅ / —
+//     • Step 3: Confirm CISD / Displacement   ⚡ live / ✅ done / —
+//     • Step 4: Enter — Killzone active?      ✅ / ⚠️
+//     • Next action narrative line
+//
+//  📉 MTF RSI MOMENTUM GATEKEEPER
+//     • Fetches 1H RSI; if strongly bearish (< 45) → silences standard buy signals
+//     • If strongly bullish (> 55) → silences standard sell signals
+//     • Elite signals always shown regardless
+//
+//  🎨 HTF CANDLE VOLUME-WEIGHTED COLORING
+//     • Compares HTF volume to rolling average
+//     • High-volume candle → solid border (real expansion)
+//     • Low-volume candle  → dashed border (potential exhaustion)
+//     • Tooltip text on live candle label: "High Vol" / "Low Vol"
+//
+//  🏹 PROJECTED TARGET BOX
+//     • After manipulation confirmed: draws a target box from current price
+//       to expected Distribution level (session high/low opposite side)
+//
+//  🎓 MENTOR / TRAINING MODE (v5.4 — flight simulator for beginners)
+//     • Beginner = Phase + Sweep + Displacement focus; simplified visuals (SL+TP2 only).
+//     • Phase instruction text: "Do nothing. Wait for sweep." / "Watch for displacement." / "Manage risk."
+//     • Freeze Frame: highlight last Elite+ setup (Sweep → Displacement) to burn sequence into memory.
+//     • Mistake Alerts: ⚠️ Outside Killzone / RSI disagrees — teach why trades were skipped.
+//     • Session Score: Today's Structure (sweeps, displacements, Elite/Elite+) — review structure, not PnL.
+//
+//  TTrades / ICT ALIGNMENT:
+//     • CISD = Change in State of Delivery: close above last down-close series (bullish) / below last up-close series (bearish).
+//     • Killzones: Asian 19:00–00:00 NY (Accumulation) | London 02:00–05:00 (Manipulation/Judas) | NY 07:00–10:00 (Distribution).
+//     • Elite+ = Time (in KZ) + Liquidity sweep + CISD/Displacement; mentor alerts teach "Wait for CISD to confirm Distribution."
+//
+//  TTrades FRACTAL MODEL (candle sequences, not single shapes):
+//     • Candle 2 = Reversal candle at liquidity (high/low of move). Wick > 50% of range → "Rejection Block" (label on chart).
+//     • CISD = Body close past open of first candle in opposite sequence; ignore wicks for this.
+//     • Candle 3 = First pullback OB after CISD; safe entry (OB box drawn on CISD trigger).
+// =============================================================================
+//@version=6
+indicator("RetailBeastFX: Ultra Alpha Mentor", shorttitle="RBFX Ultra v5.4",
+         overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// =============================================================================
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+// =============================================================================
+
+// ── HTF Core
+anchorType    = input.string("NY Midnight", "HTF Anchor (PO3 Session)",
+                    options=["NY Midnight","Daily","Weekly"],                    group="⚙️ HTF Power of 3 Engine")
+showHTFLines  = input.bool(true,  "Show Session Open / High / Low Lines",        group="⚙️ HTF Power of 3 Engine", tooltip="Horizontal levels: Open (anchor), Session High/Low. Discount = below Open, Premium = above.")
+showAMDBox    = input.bool(true,  "Show Accumulation Box (AMD)",                 group="⚙️ HTF Power of 3 Engine")
+showIBBox     = input.bool(true,  "Show Initial Balance Box (First 1H)",         group="⚙️ HTF Power of 3 Engine")
+amdHours      = input.int(2,      "Accumulation Window (Hours)", minval=1, maxval=6, group="⚙️ HTF Power of 3 Engine")
+
+// ── PO3 Candle Overlay
+showOverlay   = input.bool(true,  "Show HTF PO3 Candle Overlay",                 group="🕯️ PO3 Candle Overlay")
+overlayTF     = input.timeframe("D", "HTF Overlay Timeframe",                    group="🕯️ PO3 Candle Overlay")
+pastCandles   = input.int(3,      "Show Past N Candles",  minval=0, maxval=10,   group="🕯️ PO3 Candle Overlay")
+candleOffset  = input.int(10,     "Candle Offset from Right (bars)",
+                    minval=2, maxval=50,                                          group="🕯️ PO3 Candle Overlay")
+candleWidth   = input.int(5,      "Candle Width (bars)",  minval=2, maxval=20,   group="🕯️ PO3 Candle Overlay")
+candleSpacing = input.int(2,      "Gap Between Past Candles (bars)",
+                    minval=1, maxval=10,                                          group="🕯️ PO3 Candle Overlay")
+bodyOpacity   = input.int(20,     "Body Opacity (0=solid, 95=faint)",
+                    minval=0, maxval=95,                                          group="🕯️ PO3 Candle Overlay")
+showWicks     = input.bool(true,  "Show HTF Wicks",                              group="🕯️ PO3 Candle Overlay")
+wickWidth     = input.int(2,      "Wick Line Width",      minval=1, maxval=4,    group="🕯️ PO3 Candle Overlay")
+lineWidth     = input.int(2,      "50% Line Width",       minval=1, maxval=4,    group="🕯️ PO3 Candle Overlay")
+bullBodyCol   = input.color(color.new(color.lime, 0),  "Bullish Body Color",     group="🕯️ PO3 Candle Overlay")
+bearBodyCol   = input.color(color.new(color.red,  0),  "Bearish Body Color",     group="🕯️ PO3 Candle Overlay")
+dojiBodyCol   = input.color(color.new(color.gray, 0),  "Doji Body Color",        group="🕯️ PO3 Candle Overlay")
+show50Line    = input.bool(true,  "Show 50% Equilibrium Line",                   group="🕯️ PO3 Candle Overlay")
+showOHLC      = input.bool(true,  "Show OHLC Labels (Live Candle)",              group="🕯️ PO3 Candle Overlay")
+labelSzStr    = input.string("small", "Label Text Size",
+                    options=["tiny","small","normal","large"],                    group="🕯️ PO3 Candle Overlay")
+showCountdown = input.bool(true,  "Show Countdown to Close",                     group="🕯️ PO3 Candle Overlay")
+showRange     = input.bool(true,  "Show H-L Range",                              group="🕯️ PO3 Candle Overlay")
+alertHTFFlip  = input.bool(true,  "Alert: HTF Candle Flips Bias",                group="🕯️ PO3 Candle Overlay")
+
+// ── Killzone Filter (NEW v5.4)
+useKZFilter   = input.bool(true,  "Enable Killzone Filter (Elite+ only in KZ)",  group="🎯 Killzone & Filters")
+showKZBox     = input.bool(true,  "Show Killzone Boxes on Chart",                group="🎯 Killzone & Filters")
+asianRange    = input.bool(true,  "Asian Range  19:00–00:00 NY (Accumulation)",  group="🎯 Killzone & Filters", tooltip="Sets daily boundaries; London often sweeps Asian highs/lows")
+londonOpen    = input.bool(true,  "London Open  02:00–05:00 NY (Manipulation)",  group="🎯 Killzone & Filters")
+nyOpen        = input.bool(true,  "New York Open  07:00–10:00 NY (Distribution)", group="🎯 Killzone & Filters")
+useMTFRSI     = input.bool(true,  "Enable 1H RSI Momentum Gatekeeper",           group="🎯 Killzone & Filters")
+rsiLen        = input.int(14,     "RSI Length", minval=7, maxval=21,             group="🎯 Killzone & Filters")
+rsiBullThr    = input.int(55,     "RSI Bull Threshold (above = bullish)",
+                    minval=50, maxval=70,                                         group="🎯 Killzone & Filters")
+rsiBearThr    = input.int(45,     "RSI Bear Threshold (below = bearish)",
+                    minval=30, maxval=50,                                         group="🎯 Killzone & Filters")
+
+// ── Signal Engine
+showCISD      = input.bool(true,  "Show CISD Signals",                           group="🎯 Signal Engine")
+showCISDOB    = input.bool(true,  "Show Order Block on CISD",                   group="🎯 Signal Engine", tooltip="Draw OB box on first CISD only: the 'base' candle that was broken. If the box holds, the trend holds.")
+cisdOBExtend  = input.int(15,     "Order Block extend (bars right)", minval=5, maxval=50, group="🎯 Signal Engine", tooltip="How far the OB box extends to the right")
+cisdName      = input.string("CISD", "CISD signal name on chart", options=["CISD", "Shift", "Trigger", "GO", "Entry Confirmed", "⚡"], group="🎯 Signal Engine", tooltip="Label for the momentum-shift signal: CISD (methodology), Shift, Trigger, GO, etc.")
+cisdLookback  = input.int(8,      "CISD Lookback (last N bars for series)", minval=3, maxval=20, group="🎯 Signal Engine", tooltip="TTrades: close above last down-close series / below last up-close series")
+dispMult      = input.float(1.5,  "Displacement Multiplier (Body > X × Avg)",
+                    minval=1.0, maxval=3.0,                                       group="🎯 Signal Engine")
+dispLookback  = input.int(10,     "Displacement Lookback (bars)", minval=5, maxval=20, group="🎯 Signal Engine")
+showPO3Sigs   = input.bool(true,  "Show PO3 Entry Signals",                      group="🎯 Signal Engine")
+showJudas     = input.bool(true,  "Show Judas Swing Labels",                     group="🎯 Signal Engine", tooltip="Labels at sweep of Session/PDH/PDL; marks manipulation pivot (horizontal levels, not a moving line).")
+showCandle2   = input.bool(true,  "Show Candle 2 (Rejection) at liquidity",      group="🎯 Signal Engine", tooltip="TTrades: when the candle that touches Red/Blue has wick > 50% of range = Rejection Block (banks grabbed money).")
+useAMDSweep   = input.bool(true,  "Include AMD/Asian Range Sweep (JPY pairs)",   group="🎯 Signal Engine", tooltip="Judas on Accumulation box high/low after AMD seals")
+judasKZOnly   = input.bool(false,  "Judas Labels Only in Killzone",               group="🎯 Signal Engine", tooltip="Only show 🕵️ Judas when sweep occurs inside London or NY KZ")
+
+// ── Risk Management (NEW v5.4)
+showRisk      = input.bool(true,  "Show Auto SL / TP Lines",                     group="💰 Risk Management")
+slBuffer      = input.float(0.1,  "SL Buffer below/above Manip. Level (%)",
+                    minval=0.0, maxval=1.0, step=0.05,                            group="💰 Risk Management")
+showTargetBox = input.bool(true,  "Show Projected Distribution Target Box",      group="💰 Risk Management")
+targetBoxCol  = input.color(color.new(color.purple, 85), "Target Box Color",     group="💰 Risk Management")
+
+// ── Guidance Panel (NEW v5.4)
+showGuide     = input.bool(true,  "Show Step-by-Step Guidance Panel",            group="📋 Mentor Guidance")
+
+// ── 🎓 MENTOR / TRAINING MODE (flight simulator for beginners)
+mentorMode    = input.string("Beginner", "Mentor Mode", options=["Beginner", "Pro", "Adaptive"], group="🎓 Mentor / Training", tooltip="Beginner = Phase+Sweep+Disp only, simplified visuals. Pro = full engine. Adaptive = unlock over time.")
+showFreezeFrame = input.bool(true,  "Freeze Frame: Highlight last Elite+ setup",  group="🎓 Mentor / Training", tooltip="Draw attention to Sweep → Displacement sequence after Elite+")
+showMistakeAlerts = input.bool(true,  "Show Mistake Alerts (why trade was skipped)", group="🎓 Mentor / Training", tooltip="⚠️ Outside KZ / RSI disagrees — teaches low-probability contexts")
+showSessionScore  = input.bool(true,  "Session Score: Today's Structure",          group="🎓 Mentor / Training", tooltip="Count sweeps, displacements, Elite signals — review structure not PnL")
+// Beginner = SL + TP2 only; hide TP3 and target box to reduce overwhelm
+useSimplifiedRisk = mentorMode == "Beginner"
+
+// ── FVG
+showFVG       = input.bool(true,  "Show Fair Value Gaps",                        group="📦 Fair Value Gaps")
+fvgMinSize    = input.float(0.05, "Min FVG Size (% of price)",
+                    minval=0.01, maxval=1.0, step=0.01,                           group="📦 Fair Value Gaps")
+fvgMaxBars    = input.int(20,     "Max FVG Age (bars)", minval=5, maxval=100,    group="📦 Fair Value Gaps")
+fvgMitigated  = input.bool(false, "Hide Mitigated FVGs",                         group="📦 Fair Value Gaps")
+
+// ── Liquidity
+showPDLevels  = input.bool(true,  "Show Previous Day High/Low",                  group="🏛️ Liquidity Levels", tooltip="Horizontal PDH/PDL levels; liquidity that Smart Money may sweep (Judas).")
+showPrevRange = input.bool(true,  "Show Previous Day Ghost Box",                 group="🏛️ Liquidity Levels")
+
+// ── Dashboard & Alerts
+showDash      = input.bool(true,  "Show Main Dashboard",                         group="📊 Dashboard")
+alertOpen     = input.bool(true,  "Alert: Price Crosses Session Open",           group="🔔 Alerts")
+alertSweepOn  = input.bool(true,  "Alert: Sweep Detected",                       group="🔔 Alerts")
+alertElite    = input.bool(true,  "Alert: Elite PO3 Signal",                     group="🔔 Alerts")
+beginnerMode  = input.bool(true,  "Beginner Mode (Narrative Alert Text)",        group="🔔 Alerts")
+
+// ── Visuals
+midnightColor = input.color(color.new(color.orange, 0),  "Session Open Line",    group="🎨 Visuals")
+htfHighColor  = input.color(color.new(color.red,    0),  "Session High Line",    group="🎨 Visuals")
+htfLowColor   = input.color(color.new(color.blue,   0),  "Session Low Line",     group="🎨 Visuals")
+discountBG    = input.color(color.new(color.blue,   93), "Discount Zone BG",     group="🎨 Visuals")
+premiumBG     = input.color(color.new(color.red,    93), "Premium Zone BG",      group="🎨 Visuals")
+amdBoxColor   = input.color(color.new(color.yellow, 82), "AMD Box",              group="🎨 Visuals")
+ibBoxColor    = input.color(color.new(color.teal,   82), "Initial Balance Box",  group="🎨 Visuals")
+fvgBullColor  = input.color(color.new(color.lime,   80), "Bullish FVG",          group="🎨 Visuals")
+fvgBearColor  = input.color(color.new(color.red,    80), "Bearish FVG",          group="🎨 Visuals")
+pdGhostColor  = input.color(color.new(color.gray,   88), "Prev Day Ghost Box",   group="🎨 Visuals")
+kzAsianCol    = input.color(color.new(color.gray,   90), "Asian Range KZ BG",    group="🎨 Visuals")
+kzLondonCol   = input.color(color.new(color.yellow, 88), "London Killzone BG",   group="🎨 Visuals")
+kzNYCol       = input.color(color.new(color.blue,   88), "NY Open Killzone BG",  group="🎨 Visuals")
+
+// =============================================================================
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// =============================================================================
+getLblSz(string s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : s == "normal" ? size.normal : size.large
+
+lblSz = getLblSz(labelSzStr)
+
+fmtCountdown(int ms) =>
+    secs = int(ms / 1000)
+    h    = secs / 3600
+    m    = (secs % 3600) / 60
+    s    = secs % 60
+    h > 0 ? str.tostring(h) + "h " + str.tostring(m) + "m" :
+     m > 0 ? str.tostring(m) + "m " + str.tostring(s) + "s" :
+     str.tostring(s) + "s"
+
+fmtRR(float entry, float sl, float tp) =>
+    risk   = math.abs(entry - sl)
+    reward = math.abs(tp - entry)
+    risk > 0 ? "R:R " + str.tostring(math.round(reward / risk * 10) / 10, "#.#") + ":1" : "R:R —"
+
+// =============================================================================
+// ─── SESSION DETECTION ───────────────────────────────────────────────────────
+// =============================================================================
+bool isNewHTFBar = switch anchorType
+    "NY Midnight" => dayofmonth(time,"America/New_York") != dayofmonth(time[1],"America/New_York")
+    "Daily"       => ta.change(time("D")) != 0
+    "Weekly"      => ta.change(time("W")) != 0
+    =>               false
+
+// =============================================================================
+// ─── KILLZONE DETECTION (NEW v5.4) ───────────────────────────────────────────
+// =============================================================================
+nyHour = hour(time, "America/New_York")
+nyMin  = minute(time, "America/New_York")
+nyTime = nyHour * 100 + nyMin
+
+inAsianKZ  = asianRange and (nyTime >= 1900 or nyHour == 0)   // 19:00–00:00 NY (Accumulation)
+inLondonKZ = londonOpen and nyTime >= 200 and nyTime < 500    // 02:00–05:00 NY (Manipulation / Judas)
+inNYKZ     = nyOpen     and nyTime >= 700 and nyTime < 1000   // 07:00–10:00 NY (Distribution)
+inAnyKZ    = inLondonKZ or inNYKZ
+
+// Draw killzone background boxes (one per session per day)
+var box kzAsianBox  = na
+var box kzLondonBox = na
+var box kzNYBox     = na
+var bool kzAsianStarted  = false
+var bool kzLondonStarted = false
+var bool kzNYStarted     = false
+var bool kzAsianEnded    = false
+var bool kzLondonEnded   = false
+var bool kzNYEnded       = false
+
+if isNewHTFBar
+    kzAsianStarted  := false
+    kzLondonStarted := false
+    kzNYStarted     := false
+    kzAsianEnded    := false
+    kzLondonEnded   := false
+    kzNYEnded       := false
+
+if showKZBox and asianRange
+    if inAsianKZ and not kzAsianStarted
+        kzAsianStarted := true
+        kzAsianEnded   := false
+        if not na(kzAsianBox)
+            box.delete(kzAsianBox)
+        kzAsianBox := box.new(bar_index, high, bar_index + 1, low,
+             border_color=color.new(color.gray, 60), bgcolor=kzAsianCol,
+             text="🌏 Asian Range", text_color=color.new(color.gray, 30), text_size=size.tiny)
+    if inAsianKZ and kzAsianStarted and not kzAsianEnded and not na(kzAsianBox)
+        box.set_top(kzAsianBox,    math.max(box.get_top(kzAsianBox), high))
+        box.set_bottom(kzAsianBox, math.min(box.get_bottom(kzAsianBox), low))
+        box.set_right(kzAsianBox,  bar_index + 1)
+    if not inAsianKZ and kzAsianStarted and not kzAsianEnded
+        kzAsianEnded := true
+
+if showKZBox and londonOpen
+    if inLondonKZ and not kzLondonStarted
+        kzLondonStarted := true
+        kzLondonEnded   := false
+        if not na(kzLondonBox)
+            box.delete(kzLondonBox)
+        kzLondonBox := box.new(bar_index, high, bar_index + 1, low,
+             border_color=color.new(color.yellow, 60), bgcolor=kzLondonCol,
+             text="🇬🇧 London KZ", text_color=color.new(color.yellow, 20), text_size=size.tiny)
+    if inLondonKZ and kzLondonStarted and not kzLondonEnded and not na(kzLondonBox)
+        box.set_top(kzLondonBox,    math.max(box.get_top(kzLondonBox), high))
+        box.set_bottom(kzLondonBox, math.min(box.get_bottom(kzLondonBox), low))
+        box.set_right(kzLondonBox,  bar_index + 1)
+    if not inLondonKZ and kzLondonStarted and not kzLondonEnded
+        kzLondonEnded := true
+
+if showKZBox and nyOpen
+    if inNYKZ and not kzNYStarted
+        kzNYStarted := true
+        kzNYEnded   := false
+        if not na(kzNYBox)
+            box.delete(kzNYBox)
+        kzNYBox := box.new(bar_index, high, bar_index + 1, low,
+             border_color=color.new(color.blue, 60), bgcolor=kzNYCol,
+             text="🗽 NY Open KZ", text_color=color.new(color.blue, 10), text_size=size.tiny)
+    if inNYKZ and kzNYStarted and not kzNYEnded and not na(kzNYBox)
+        box.set_top(kzNYBox,    math.max(box.get_top(kzNYBox), high))
+        box.set_bottom(kzNYBox, math.min(box.get_bottom(kzNYBox), low))
+        box.set_right(kzNYBox,  bar_index + 1)
+    if not inNYKZ and kzNYStarted and not kzNYEnded
+        kzNYEnded := true
+
+// =============================================================================
+// ─── MTF RSI MOMENTUM GATEKEEPER (NEW v5.4) ──────────────────────────────────
+// =============================================================================
+htfRSI     = request.security(syminfo.tickerid, "60", ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+rsiIsBull  = htfRSI >= rsiBullThr
+rsiIsBear  = htfRSI <= rsiBearThr
+rsiNeutral = not rsiIsBull and not rsiIsBear
+
+// ── FIXED: Move RSI text calculation outside dashboard block (available globally)
+rsiNum  = str.tostring(math.round(htfRSI))
+rsiTxt  = rsiIsBull ? "📈 Bull " + rsiNum : rsiIsBear ? "📉 Bear " + rsiNum : "↔ Neutral " + rsiNum
+
+// =============================================================================
+// ─── HTF VOLUME (for candle coloring) ────────────────────────────────────────
+// =============================================================================
+htfVol    = request.security(syminfo.tickerid, overlayTF, volume, lookahead=barmerge.lookahead_off)
+htfAvgVol = request.security(syminfo.tickerid, overlayTF, ta.sma(volume, 20), lookahead=barmerge.lookahead_off)
+isHighVol = not na(htfVol) and not na(htfAvgVol) and htfVol >= htfAvgVol * 1.1
+
+// =============================================================================
+// ─── PO3 CANDLE OVERLAY — TOODEGREES STYLE ───────────────────────────────────
+// =============================================================================
+htfO  = request.security(syminfo.tickerid, overlayTF, open,       lookahead=barmerge.lookahead_off)
+htfH  = request.security(syminfo.tickerid, overlayTF, high,       lookahead=barmerge.lookahead_off)
+htfL  = request.security(syminfo.tickerid, overlayTF, low,        lookahead=barmerge.lookahead_off)
+htfC  = request.security(syminfo.tickerid, overlayTF, close,      lookahead=barmerge.lookahead_off)
+htfTC = request.security(syminfo.tickerid, overlayTF, time_close, lookahead=barmerge.lookahead_off)
+
+isNewOvBar = ta.change(time(overlayTF)) != 0
+
+var float[] histO   = array.new_float()
+var float[] histH   = array.new_float()
+var float[] histL   = array.new_float()
+var float[] histC   = array.new_float()
+var bool[]  histHiV = array.new_bool()   // high-volume flag per past candle
+MAX_HIST = 11
+
+if isNewOvBar
+    array.unshift(histO,   htfO)
+    array.unshift(histH,   htfH)
+    array.unshift(histL,   htfL)
+    array.unshift(histC,   htfC)
+    array.unshift(histHiV, isHighVol)
+    while array.size(histO)   > MAX_HIST
+        array.pop(histO)
+    while array.size(histH)   > MAX_HIST
+        array.pop(histH)
+    while array.size(histL)   > MAX_HIST
+        array.pop(histL)
+    while array.size(histC)   > MAX_HIST
+        array.pop(histC)
+    while array.size(histHiV) > MAX_HIST
+        array.pop(histHiV)
+
+var bool prevIsBull = false
+var int  ovBarCount = 0
+if isNewHTFBar
+    ovBarCount := 0
+ovBarCount += 1
+
+isBullLive = htfC >= htfO
+
+if alertHTFFlip and ovBarCount > 1
+    if isBullLive and not prevIsBull
+        alert("RetailBeastFX 🕯️ " + overlayTF + " candle FLIPPED BULLISH.", alert.freq_once_per_bar)
+    else if not isBullLive and prevIsBull
+        alert("RetailBeastFX 🕯️ " + overlayTF + " candle FLIPPED BEARISH.", alert.freq_once_per_bar)
+prevIsBull := isBullLive
+
+// ── Candle color helpers
+candleBodyCol(float o, float c, int opac) =>
+    c > o ? color.new(bullBodyCol, opac) : c < o ? color.new(bearBodyCol, opac) : color.new(dojiBodyCol, opac)
+
+candleBorderCol(float o, float c) =>
+    c > o ? bullBodyCol : c < o ? bearBodyCol : dojiBodyCol
+
+// ── Volume-weighted border style (NEW v5.4)
+// High vol = solid border (institutional expansion), Low vol = dashed (exhaustion)
+candleBorderStyle(bool hiVol) =>
+    hiVol ? line.style_solid : line.style_dashed
+
+// ── Object pools
+var box[]   pool_bodies = array.new_box()
+var line[]  pool_wicksU = array.new_line()
+var line[]  pool_wicksD = array.new_line()
+var line[]  pool_50s    = array.new_line()
+var label[] pool_labels = array.new_label()
+
+clearPool() =>
+    while array.size(pool_bodies) > 0
+        box.delete(array.pop(pool_bodies))
+    while array.size(pool_wicksU) > 0
+        line.delete(array.pop(pool_wicksU))
+    while array.size(pool_wicksD) > 0
+        line.delete(array.pop(pool_wicksD))
+    while array.size(pool_50s) > 0
+        line.delete(array.pop(pool_50s))
+    while array.size(pool_labels) > 0
+        label.delete(array.pop(pool_labels))
+
+// ── Draw a single HTF candle
+drawCandle(int xL, int xR, float o, float h, float l, float c, bool isLive, bool hiVol) =>
+    bCol  = candleBodyCol(o, c, bodyOpacity)
+    brCol = candleBorderCol(o, c)
+    bodyT = math.max(o, c)
+    bodyB = math.min(o, c)
+    mid   = (o + c) / 2
+    xMid  = math.round((xL + xR) / 2)
+
+    // Body — border thickness signals volume quality
+    borderW = hiVol ? 2 : 1
+    b = box.new(xL, bodyT, xR, bodyB,
+         border_color=color.new(brCol, hiVol ? 0 : 40),
+         bgcolor=bCol, border_width=borderW)
+    array.push(pool_bodies, b)
+
+    // Upper wick
+    if showWicks and h > bodyT
+        wu = line.new(xMid, bodyT, xMid, h,
+             color=color.new(brCol, hiVol ? 0 : 50), width=wickWidth)
+        array.push(pool_wicksU, wu)
+
+    // Lower wick
+    if showWicks and bodyB > l
+        wd = line.new(xMid, bodyB, xMid, l,
+             color=color.new(brCol, hiVol ? 0 : 50), width=wickWidth)
+        array.push(pool_wicksD, wd)
+
+    // 50% line
+    if show50Line
+        m50 = line.new(xL, mid, xR, mid,
+              color=color.new(color.orange, 10), width=lineWidth,
+              style=line.style_dashed)
+        array.push(pool_50s, m50)
+
+    // OHLC + info labels — live candle only
+    if isLive
+        xLbl  = xR + 1
+        volTx = hiVol ? " ⚡HiVol" : " 🔇LoVol"
+
+        if showOHLC
+            lH = label.new(xLbl, h, "H  " + str.tostring(h, format.mintick),
+                 color=color.new(color.red,    20), textcolor=color.white,
+                 style=label.style_label_left, size=lblSz)
+            lO = label.new(xLbl, o, "O  " + str.tostring(o, format.mintick),
+                 color=color.new(color.orange, 20), textcolor=color.white,
+                 style=label.style_label_left, size=lblSz)
+            lC = label.new(xLbl, c, "C  " + str.tostring(c, format.mintick) + volTx,
+                 color=color.new(brCol, 20), textcolor=color.white,
+                 style=label.style_label_left, size=lblSz)
+            lL = label.new(xLbl, l, "L  " + str.tostring(l, format.mintick),
+                 color=color.new(color.blue,   20), textcolor=color.white,
+                 style=label.style_label_left, size=lblSz)
+            array.push(pool_labels, lH)
+            array.push(pool_labels, lO)
+            array.push(pool_labels, lC)
+            array.push(pool_labels, lL)
+
+        if showCountdown
+            msLeft = htfTC - timenow
+            cdStr  = msLeft > 0 ? "⏱ " + fmtCountdown(msLeft) : "⏱ Closing..."
+            lCD = label.new(xLbl, mid, cdStr,
+                  color=color.new(color.black, 20), textcolor=color.new(color.orange, 0),
+                  style=label.style_label_left, size=lblSz)
+            array.push(pool_labels, lCD)
+
+        if showRange
+            rng   = h - l
+            ticks = rng / syminfo.mintick
+            rStr  = "📏 " + str.tostring(rng, format.mintick) + " (" + str.tostring(math.round(ticks), "###,###") + "t)"
+            lR = label.new(xLbl, l - syminfo.mintick * 3, rStr,
+                 color=color.new(color.black, 20), textcolor=color.new(color.gray, 20),
+                 style=label.style_label_left, size=size.tiny)
+            array.push(pool_labels, lR)
+
+// ── Rebuild on every last bar
+if showOverlay and barstate.islast
+    clearPool()
+    liveL = bar_index + candleOffset
+    liveR = liveL + candleWidth
+    drawCandle(liveL, liveR, htfO, htfH, htfL, htfC, true, isHighVol)
+
+    if pastCandles > 0 and array.size(histO) > 0
+        maxDraw = math.min(pastCandles, array.size(histO))
+        for i = 0 to maxDraw - 1
+            pR   = liveL - candleSpacing - i * (candleWidth + candleSpacing)
+            pL   = pR - candleWidth
+            pO   = array.get(histO,   i)
+            pH   = array.get(histH,   i)
+            pLow = array.get(histL,   i)
+            pC   = array.get(histC,   i)
+            pHiV = array.get(histHiV, i)
+            if not na(pO)
+                drawCandle(pL, pR, pO, pH, pLow, pC, false, pHiV)
+
+// Dashboard values
+htfCandleBull   = htfC >= htfO
+htfCandleStatus = htfCandleBull ? "🟢 Bullish" : "🔴 Bearish"
+htfCandle50     = (htfO + htfC) / 2
+priceVs50Str    = close > htfCandle50 ? "↑ Above 50%" : "↓ Below 50%"
+
+// =============================================================================
+// ─── HTF SESSION OHLC (PO3 Phase anchor) ─────────────────────────────────────
+// =============================================================================
+var float htfOpen      = na
+var float htfHigh      = na
+var float htfLow       = na
+var int   htfOpenTime  = na
+var float prevDayHigh  = na
+var float prevDayLow   = na
+var int   prevDayStart = na
+
+if isNewHTFBar
+    prevDayHigh  := htfHigh
+    prevDayLow   := htfLow
+    prevDayStart := bar_index
+    htfOpen      := open
+    htfHigh      := high
+    htfLow       := low
+    htfOpenTime  := time
+else
+    if not na(htfHigh)
+        htfHigh := math.max(htfHigh, high)
+    if not na(htfLow)
+        htfLow  := math.min(htfLow, low)
+
+// =============================================================================
+// ─── TIME WINDOWS ────────────────────────────────────────────────────────────
+// =============================================================================
+inAMDWindow = not na(htfOpenTime) and (time - htfOpenTime) <= amdHours * 3600000
+inIBWindow  = not na(htfOpenTime) and (time - htfOpenTime) <= 3600000
+
+// =============================================================================
+// ─── ZONE CLASSIFICATION ──────────────────────────────────────────────────────
+// =============================================================================
+isDiscount = not na(htfOpen) and close < htfOpen
+isPremium  = not na(htfOpen) and close > htfOpen
+
+bgcolor(showHTFLines and isDiscount ? discountBG : showHTFLines and isPremium ? premiumBG : na, title="Zone BG")
+
+// =============================================================================
+// ─── SESSION LINES (line.new for straight horizontal levels, no plot jag) ─────
+// =============================================================================
+var line   openLine  = na
+var line   highLine  = na
+var line   lowLine   = na
+var int    sessionStartBar = 0
+if isNewHTFBar
+    sessionStartBar := bar_index
+
+if showHTFLines and not na(htfOpen)
+    if na(openLine)
+        openLine := line.new(sessionStartBar, htfOpen, bar_index + 1, htfOpen, color=midnightColor, width=lineWidth, extend=extend.right)
+    else
+        line.set_xy1(openLine, sessionStartBar, htfOpen)
+        line.set_xy2(openLine, bar_index + 1, htfOpen)
+
+if showHTFLines and not na(htfHigh)
+    if na(highLine)
+        highLine := line.new(sessionStartBar, htfHigh, bar_index + 1, htfHigh, color=htfHighColor, width=1, extend=extend.right)
+    else
+        line.set_xy1(highLine, sessionStartBar, htfHigh)
+        line.set_xy2(highLine, bar_index + 1, htfHigh)
+
+if showHTFLines and not na(htfLow)
+    if na(lowLine)
+        lowLine := line.new(sessionStartBar, htfLow, bar_index + 1, htfLow, color=htfLowColor, width=1, extend=extend.right)
+    else
+        line.set_xy1(lowLine, sessionStartBar, htfLow)
+        line.set_xy2(lowLine, bar_index + 1, htfLow)
+
+if isNewHTFBar and not na(htfOpen)
+    label.new(bar_index, htfOpen,
+         "🏦 " + anchorType + " Open · " + str.tostring(htfOpen, format.mintick),
+         color=color.new(color.orange, 10), textcolor=color.white,
+         style=label.style_label_right, size=size.small)
+
+// =============================================================================
+// ─── PREVIOUS DAY LIQUIDITY (line.new for straight PDH/PDL) ──────────────────
+// =============================================================================
+var line pdhLine = na
+var line pdlLine = na
+var line cisdLine = line.new(na, na, na, na, extend=extend.right, color=color.yellow, width=2, style=line.style_dashed)
+var label cisdLabel = na
+var box  cisdOB    = na
+if showPDLevels and not na(prevDayHigh)
+    if na(pdhLine)
+        pdhLine := line.new(bar_index, prevDayHigh, bar_index + 1, prevDayHigh, color=color.new(color.red, 30), width=1, extend=extend.right)
+    else if isNewHTFBar
+        line.set_xy1(pdhLine, bar_index, prevDayHigh)
+        line.set_xy2(pdhLine, bar_index + 1, prevDayHigh)
+    line.set_x2(pdhLine, bar_index + 1)
+if showPDLevels and not na(prevDayLow)
+    if na(pdlLine)
+        pdlLine := line.new(bar_index, prevDayLow, bar_index + 1, prevDayLow, color=color.new(color.blue, 30), width=1, extend=extend.right)
+    else if isNewHTFBar
+        line.set_xy1(pdlLine, bar_index, prevDayLow)
+        line.set_xy2(pdlLine, bar_index + 1, prevDayLow)
+    line.set_x2(pdlLine, bar_index + 1)
+
+var box prevDayBox = na
+if showPrevRange and isNewHTFBar and not na(prevDayHigh) and not na(prevDayStart)
+    if not na(prevDayBox)
+        box.delete(prevDayBox)
+    prevDayBox := box.new(prevDayStart, prevDayHigh, bar_index, prevDayLow,
+         border_color=color.new(color.gray, 50), bgcolor=pdGhostColor,
+         text="◈ Prev Session", text_color=color.new(color.gray, 30), text_size=size.tiny)
+
+if isNewHTFBar and not na(prevDayHigh)
+    label.new(bar_index, prevDayHigh, "🔴 PDH · " + str.tostring(prevDayHigh, format.mintick),
+         color=color.new(color.red, 20), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+    label.new(bar_index, prevDayLow, "🔵 PDL · " + str.tostring(prevDayLow, format.mintick),
+         color=color.new(color.blue, 20), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+
+// =============================================================================
+// ─── AMD BOX ─────────────────────────────────────────────────────────────────
+// =============================================================================
+var box   amdBox  = na
+var float amdTop  = na
+var float amdBtm  = na
+var bool  amdDone = false
+
+if showAMDBox
+    if isNewHTFBar
+        amdTop  := high
+        amdBtm  := low
+        amdDone  := false
+        if not na(amdBox)
+            box.delete(amdBox)
+        amdBox := box.new(bar_index, high, bar_index + 1, low,
+             border_color=color.new(color.yellow, 10), bgcolor=amdBoxColor,
+             text="⏳ Accumulation", text_color=color.new(color.orange, 0), text_size=size.small)
+    if inAMDWindow and not amdDone and not na(amdBox)
+        amdTop := math.max(amdTop, high)
+        amdBtm := math.min(amdBtm, low)
+        box.set_top(amdBox, amdTop)
+        box.set_bottom(amdBox, amdBtm)
+        box.set_right(amdBox, bar_index + 1)
+    if not inAMDWindow and not amdDone and not na(amdBox)
+        amdDone := true
+        box.set_right(amdBox, bar_index)
+
+// =============================================================================
+// ─── INITIAL BALANCE BOX ─────────────────────────────────────────────────────
+// =============================================================================
+var box   ibBox  = na
+var float ibTop  = na
+var float ibBtm  = na
+var bool  ibDone = false
+
+if showIBBox
+    if isNewHTFBar
+        ibTop  := high
+        ibBtm  := low
+        ibDone  := false
+        if not na(ibBox)
+            box.delete(ibBox)
+        ibBox := box.new(bar_index, high, bar_index + 1, low,
+             border_color=color.new(color.teal, 10), bgcolor=ibBoxColor,
+             text="IB", text_color=color.new(color.teal, 0), text_size=size.tiny)
+    if inIBWindow and not ibDone and not na(ibBox)
+        ibTop := math.max(ibTop, high)
+        ibBtm := math.min(ibBtm, low)
+        box.set_top(ibBox, ibTop)
+        box.set_bottom(ibBox, ibBtm)
+        box.set_right(ibBox, bar_index + 1)
+    if not inIBWindow and not ibDone and not na(ibBox)
+        ibDone := true
+        box.set_right(ibBox, bar_index)
+
+// =============================================================================
+// ─── FAIR VALUE GAPS ─────────────────────────────────────────────────────────
+// =============================================================================
+fvgMinPts = (fvgMinSize / 100) * close
+isBullFVG = low  > high[2] and (low  - high[2]) >= fvgMinPts
+isBearFVG = high < low[2]  and (low[2] - high)  >= fvgMinPts
+
+var box[] bullFVGs = array.new_box()
+var box[] bearFVGs = array.new_box()
+
+pruneArr(box[] arr, int mx) =>
+    while array.size(arr) > mx
+        box.delete(array.shift(arr))
+
+if showFVG and isBullFVG
+    pruneArr(bullFVGs, 5)
+    array.push(bullFVGs, box.new(bar_index - 2, low, bar_index + fvgMaxBars, high[2],
+         border_color=color.new(color.lime, 40), bgcolor=fvgBullColor,
+         text="FVG ▲", text_color=color.new(color.lime, 0), text_size=size.tiny))
+
+if showFVG and isBearFVG
+    pruneArr(bearFVGs, 5)
+    array.push(bearFVGs, box.new(bar_index - 2, low[2], bar_index + fvgMaxBars, high,
+         border_color=color.new(color.red, 40), bgcolor=fvgBearColor,
+         text="FVG ▼", text_color=color.new(color.red, 0), text_size=size.tiny))
+
+if fvgMitigated
+    if array.size(bullFVGs) > 0
+        for i = array.size(bullFVGs) - 1 to 0
+            b = array.get(bullFVGs, i)
+            if close < box.get_bottom(b)
+                box.delete(b)
+                array.remove(bullFVGs, i)
+    if array.size(bearFVGs) > 0
+        for i = array.size(bearFVGs) - 1 to 0
+            b = array.get(bearFVGs, i)
+            if close > box.get_top(b)
+                box.delete(b)
+                array.remove(bearFVGs, i)
+
+inBullFVG = false
+inBearFVG = false
+nearestBullFVGMid = na(htfOpen) ? na : htfOpen
+nearestBearFVGMid = na(htfOpen) ? na : htfOpen
+
+if showFVG
+    if array.size(bullFVGs) > 0
+        for i = 0 to array.size(bullFVGs) - 1
+            b = array.get(bullFVGs, i)
+            if close >= box.get_bottom(b) and close <= box.get_top(b)
+                inBullFVG := true
+            mid = (box.get_top(b) + box.get_bottom(b)) / 2
+            if mid > close
+                nearestBullFVGMid := mid
+    if array.size(bearFVGs) > 0
+        for i = 0 to array.size(bearFVGs) - 1
+            b = array.get(bearFVGs, i)
+            if close >= box.get_bottom(b) and close <= box.get_top(b)
+                inBearFVG := true
+            mid = (box.get_top(b) + box.get_bottom(b)) / 2
+            if mid < close
+                nearestBearFVGMid := mid
+
+// =============================================================================
+// ─── DISPLACEMENT ENGINE ─────────────────────────────────────────────────────
+// =============================================================================
+bodySize   = math.abs(close - open)
+avgBody    = ta.sma(bodySize, dispLookback)
+isBullDisp = bodySize > avgBody * dispMult and close > open and close > low  + (high - low) * 0.6
+isBearDisp = bodySize > avgBody * dispMult and close < open and close < high - (high - low) * 0.6
+// Quality over quantity: require meaningful body size (avoid zigzag spam on tiny candles)
+isDisplaced = bodySize > ta.atr(14) * 0.5
+
+// =============================================================================
+// ─── SWEEP / MANIPULATION (Judas Swing) ──────────────────────────────────────
+// Sequence: (1) Sweep of session liquidity (close back inside range = trap)
+//           (2) Displacement candle in opposite direction → PO3 entry.
+// Elite/Elite+ = Sweep + Displacement + FVG; Elite+ only when also inside KZ.
+// Asia/JPY: Use "Include AMD/Asian Range Sweep" so London KZ sweeps of AMD
+//           high/low (e.g. Asian session extremes) count as Judas.
+// =============================================================================
+var float prevSessHigh = na
+var float prevSessLow  = na
+var float manipLowPrice  = na    // price level of the manipulation low (for SL)
+var float manipHighPrice = na    // price level of the manipulation high (for SL)
+
+if isNewHTFBar
+    prevSessHigh   := prevDayHigh
+    prevSessLow    := prevDayLow
+
+sweptHTFHigh = not na(prevSessHigh) and not isNewHTFBar and high > prevSessHigh and close < prevSessHigh
+sweptHTFLow  = not na(prevSessLow)  and not isNewHTFBar and low  < prevSessLow  and close > prevSessLow
+sweptPDH     = not na(prevDayHigh)  and high > prevDayHigh and close < prevDayHigh
+sweptPDL     = not na(prevDayLow)   and low  < prevDayLow  and close > prevDayLow
+
+// AMD/Asian range sweep (after Accumulation seals) — for London KZ vs Asian lows (e.g. USDJPY, Nikkei)
+sweptAMDHigh = useAMDSweep and amdDone and not na(amdTop) and high > amdTop and close < amdTop
+sweptAMDLow  = useAMDSweep and amdDone and not na(amdBtm) and low  < amdBtm and close > amdBtm
+
+var bool manipHigh = false
+var bool manipLow  = false
+// First-trigger lock: only show CISD/PO3 once per sweep until bias flips or new Judas
+var bool bullishState = false
+var bool bearishState = false
+
+if isNewHTFBar
+    manipHigh      := false
+    manipLow       := false
+    manipLowPrice  := na
+    manipHighPrice := na
+
+if sweptHTFHigh or sweptPDH or sweptAMDHigh
+    manipHigh      := true
+    manipHighPrice := high
+    bullishState   := false
+    bearishState   := false
+if sweptHTFLow or sweptPDL or sweptAMDLow
+    manipLow       := true
+    manipLowPrice  := low
+    bullishState   := false
+    bearishState   := false
+
+// Judas labels: optional KZ filter; add "· KZ" when sweep occurs inside killzone
+showThisJudas = showJudas and (not judasKZOnly or inAnyKZ)
+kzSuffix     = inAnyKZ ? "\n· KZ" : ""
+
+if sweptHTFHigh and showThisJudas
+    label.new(bar_index, high, "🕵️ Judas\nHTF High Swept" + kzSuffix,
+         color=color.new(color.red, 10), textcolor=color.white,
+         style=label.style_label_down, size=size.small)
+if sweptHTFLow and showThisJudas
+    label.new(bar_index, low, "🕵️ Judas\nHTF Low Swept" + kzSuffix,
+         color=color.new(color.green, 10), textcolor=color.white,
+         style=label.style_label_up, size=size.small)
+if sweptPDH and not sweptHTFHigh and showThisJudas
+    label.new(bar_index, high, "🕵️ Judas\nPDH Swept" + kzSuffix,
+         color=color.new(color.red, 20), textcolor=color.white,
+         style=label.style_label_down, size=size.tiny)
+if sweptPDL and not sweptHTFLow and showThisJudas
+    label.new(bar_index, low, "🕵️ Judas\nPDL Swept" + kzSuffix,
+         color=color.new(color.green, 20), textcolor=color.white,
+         style=label.style_label_up, size=size.tiny)
+if sweptAMDHigh and not (sweptHTFHigh or sweptPDH) and showThisJudas
+    label.new(bar_index, high, "🕵️ Judas\nAMD High Swept" + kzSuffix,
+         color=color.new(color.red, 25), textcolor=color.white,
+         style=label.style_label_down, size=size.tiny)
+if sweptAMDLow and not (sweptHTFLow or sweptPDL) and showThisJudas
+    label.new(bar_index, low, "🕵️ Judas\nAMD Low Swept" + kzSuffix,
+         color=color.new(color.green, 25), textcolor=color.white,
+         style=label.style_label_up, size=size.tiny)
+
+// ── Candle 2 (TTrades Fractal): Rejection Block when wick > 50% of candle range at liquidity
+candleRange   = high - low
+upperWickPct  = candleRange > 0 ? (high - math.max(open, close)) / candleRange : 0.0
+lowerWickPct  = candleRange > 0 ? (math.min(open, close) - low) / candleRange : 0.0
+anyHighSweep  = sweptHTFHigh or sweptPDH or sweptAMDHigh
+anyLowSweep   = sweptHTFLow or sweptPDL or sweptAMDLow
+isRejectionHi = showCandle2 and anyHighSweep and upperWickPct > 0.5
+isRejectionLo = showCandle2 and anyLowSweep  and lowerWickPct > 0.5
+if isRejectionHi
+    label.new(bar_index, high, "🕯️ Rejection\nCandle 2", color=color.new(color.red, 15), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+if isRejectionLo
+    label.new(bar_index, low, "🕯️ Rejection\nCandle 2", color=color.new(color.green, 15), textcolor=color.white, style=label.style_label_up, size=size.tiny)
+
+// Any sweep (for guidance panel + alerts)
+anySweep = sweptHTFHigh or sweptHTFLow or sweptPDH or sweptPDL or sweptAMDHigh or sweptAMDLow
+
+// =============================================================================
+// ─── PO3 PHASE ───────────────────────────────────────────────────────────────
+// =============================================================================
+po3Phase = inAMDWindow ? "Accumulation" :
+           (manipHigh or manipLow) ? "Manipulation" : "Distribution"
+
+// =============================================================================
+// ─── KILLZONE-GATED SIGNAL GRADING (NEW v5.4) ────────────────────────────────
+// =============================================================================
+// Elite+  = Elite conditions + inside killzone
+// Elite   = Sweep + Displacement + FVG (any time)
+// Standard = Sweep + Displacement (silenced if RSI gatekeeper disagrees)
+
+po3Buy_base     = isDiscount and manipLow  and close > high[1] and isBullDisp and isDisplaced
+po3Buy_elite    = po3Buy_base  and inBullFVG
+po3Buy_elitePlus = po3Buy_elite and inAnyKZ
+po3Sel_base     = isPremium  and manipHigh and close < low[1]  and isBearDisp and isDisplaced
+po3Sel_elite    = po3Sel_base  and inBearFVG
+po3Sel_elitePlus = po3Sel_elite and inAnyKZ
+
+// RSI gatekeeper: suppress standard signals when MTF momentum disagrees
+rsiAllowBuy = not useMTFRSI or not rsiIsBear
+rsiAllowSel = not useMTFRSI or not rsiIsBull
+
+// KZ filter: if enabled, standard signals need to be in a killzone OR be elite
+kzAllowBuy = not useKZFilter or inAnyKZ or po3Buy_elite
+kzAllowSel = not useKZFilter or inAnyKZ or po3Sel_elite
+
+showBuyBase  = po3Buy_base  and rsiAllowBuy and kzAllowBuy
+showSelBase  = po3Sel_base  and rsiAllowSel and kzAllowSel
+
+// First trigger only: lock after one CISD until new sweep or opposite shift (quality over quantity)
+isBullishShift = po3Buy_base and not bullishState
+isBearishShift = po3Sel_base and not bearishState
+
+if po3Buy_base
+    manipLow  := false
+if po3Sel_base
+    manipHigh := false
+
+// ── Freeze Frame: store sweep bar and Elite+ bar for later highlight (after PO3 vars exist)
+var int lastSweepBar     = na
+var int lastElitePlusBar = na
+if anySweep
+    lastSweepBar := bar_index
+if po3Buy_elitePlus or po3Sel_elitePlus
+    lastElitePlusBar := bar_index
+if isNewHTFBar
+    lastElitePlusBar := na
+
+// ── Session Score (for Mentor / Replay: count structure, not PnL)
+var int sessSweeps    = 0
+var int sessDispl     = 0
+var int sessElite     = 0
+var int sessElitePlus = 0
+if isNewHTFBar
+    sessSweeps    := 0
+    sessDispl     := 0
+    sessElite     := 0
+    sessElitePlus := 0
+if anySweep
+    sessSweeps += 1
+if po3Buy_base or po3Sel_base
+    sessDispl += 1
+if po3Buy_elite or po3Sel_elite
+    sessElite += 1
+if po3Buy_elitePlus or po3Sel_elitePlus
+    sessElitePlus += 1
+
+// ── Signal labels
+if showPO3Sigs and po3Buy_elitePlus
+    label.new(bar_index, low, "💎 ELITE+ BUY\n⚡ KZ+FVG+Sweep+Disp",
+         color=color.new(color.aqua, 0), textcolor=color.black,
+         style=label.style_label_up, size=size.large)
+else if showPO3Sigs and po3Buy_elite
+    label.new(bar_index, low, "⚡ ELITE BUY\n🟢 FVG+Sweep+Disp",
+         color=color.new(color.lime, 0), textcolor=color.black,
+         style=label.style_label_up, size=size.normal)
+else if showPO3Sigs and showBuyBase and isBullishShift
+    label.new(bar_index, low, "✅ PO3 BUY\nSweep+Disp",
+         color=color.new(color.green, 10), textcolor=color.white,
+         style=label.style_label_up, size=size.small)
+
+if showPO3Sigs and po3Sel_elitePlus
+    label.new(bar_index, high, "💎 ELITE+ SELL\n⚡ KZ+FVG+Sweep+Disp",
+         color=color.new(color.aqua, 0), textcolor=color.black,
+         style=label.style_label_down, size=size.large)
+else if showPO3Sigs and po3Sel_elite
+    label.new(bar_index, high, "⚡ ELITE SELL\n🔴 FVG+Sweep+Disp",
+         color=color.new(color.red, 0), textcolor=color.white,
+         style=label.style_label_down, size=size.normal)
+else if showPO3Sigs and showSelBase and isBearishShift
+    label.new(bar_index, high, "✅ PO3 SELL\nSweep+Disp",
+         color=color.new(color.red, 10), textcolor=color.white,
+         style=label.style_label_down, size=size.small)
+
+// ── Mistake Alerts (teach why a trade was skipped — game changer for beginners)
+if showMistakeAlerts
+    if (po3Buy_base or po3Sel_base) and not inAnyKZ and useKZFilter
+        label.new(bar_index, po3Buy_base ? low : high, "⚠️ Outside Killzone\nLow-probability trade",
+             color=color.new(color.orange, 20), textcolor=color.white,
+             style=po3Buy_base ? label.style_label_up : label.style_label_down, size=size.small)
+    if (po3Buy_base and not rsiAllowBuy) or (po3Sel_base and not rsiAllowSel)
+        label.new(bar_index, po3Buy_base ? low : high, "⚠️ RSI disagrees\nNo trade.",
+             color=color.new(color.purple, 30), textcolor=color.white,
+             style=po3Buy_base ? label.style_label_up : label.style_label_down, size=size.small)
+
+// ── CISD horizontal line + Order Block (first trigger only). OB = "base" candle that was broken.
+if showCISD and isBullishShift
+    line.set_xy1(cisdLine, bar_index[1], high[1])
+    line.set_xy2(cisdLine, bar_index, high[1])
+    line.set_color(cisdLine, color.lime)
+    if na(cisdLabel)
+        cisdLabel := label.new(bar_index, high[1], "Bullish " + cisdName, style=label.style_label_left, color=color.new(color.lime, 100), textcolor=color.lime, size=size.tiny)
+    else
+        label.set_xy(cisdLabel, bar_index, high[1])
+        label.set_text(cisdLabel, "Bullish " + cisdName)
+        label.set_color(cisdLabel, color.new(color.lime, 100))
+        label.set_textcolor(cisdLabel, color.lime)
+    if showCISDOB
+        if not na(cisdOB)
+            box.delete(cisdOB)
+        cisdOB := box.new(bar_index[1], high[1], bar_index + cisdOBExtend, low[1], border_color=color.new(color.lime, 20), bgcolor=color.new(color.lime, 88), border_width=2)
+    bullishState := true
+    bearishState := false
+if showCISD and isBearishShift
+    line.set_xy1(cisdLine, bar_index[1], low[1])
+    line.set_xy2(cisdLine, bar_index, low[1])
+    line.set_color(cisdLine, color.red)
+    if na(cisdLabel)
+        cisdLabel := label.new(bar_index, low[1], "Bearish " + cisdName, style=label.style_label_left, color=color.new(color.red, 100), textcolor=color.red, size=size.tiny)
+    else
+        label.set_xy(cisdLabel, bar_index, low[1])
+        label.set_text(cisdLabel, "Bearish " + cisdName)
+        label.set_color(cisdLabel, color.new(color.red, 100))
+        label.set_textcolor(cisdLabel, color.red)
+    if showCISDOB
+        if not na(cisdOB)
+            box.delete(cisdOB)
+        cisdOB := box.new(bar_index[1], high[1], bar_index + cisdOBExtend, low[1], border_color=color.new(color.red, 20), bgcolor=color.new(color.red, 88), border_width=2)
+    bearishState := true
+    bullishState := false
+// Keep state lock in sync when CISD line is hidden (so PO3 labels still first-only)
+if isBullishShift and not showCISD
+    bullishState := true
+    bearishState := false
+if isBearishShift and not showCISD
+    bearishState := true
+    bullishState := false
+
+// =============================================================================
+// ─── AUTO RISK MANAGEMENT (NEW v5.4) ─────────────────────────────────────────
+// =============================================================================
+var line slLine  = na
+var line tp1Line = na
+var line tp2Line = na
+var line tp3Line = na
+var box  tgtBox  = na
+
+if showRisk and (po3Buy_elite or showBuyBase) and not na(manipLowPrice)
+    slPrice  = manipLowPrice * (1.0 - slBuffer / 100.0)
+    tp1Price = not na(nearestBullFVGMid) ? nearestBullFVGMid : close + (close - slPrice) * 1.5
+    tp2Price = not na(htfHigh) ? htfHigh : close + (close - slPrice) * 2.5
+    tp3Price = not na(prevDayHigh) ? prevDayHigh : close + (close - slPrice) * 3.5
+
+    if not na(slLine)
+        line.delete(slLine)
+    if not na(tp1Line)
+        line.delete(tp1Line)
+    if not na(tp2Line)
+        line.delete(tp2Line)
+    if not na(tp3Line)
+        line.delete(tp3Line)
+
+    slLine  := line.new(bar_index, slPrice,  bar_index + 40, slPrice,
+                 color=color.new(color.red,    0), width=1, style=line.style_dashed,
+                 extend=extend.right)
+    tp1Line := line.new(bar_index, tp1Price, bar_index + 40, tp1Price,
+                 color=color.new(color.lime,   20), width=1, style=line.style_dotted,
+                 extend=extend.right)
+    tp2Line := line.new(bar_index, tp2Price, bar_index + 40, tp2Price,
+                 color=color.new(color.lime,   0), width=2, style=line.style_dotted,
+                 extend=extend.right)
+    if not useSimplifiedRisk
+        tp3Line := line.new(bar_index, tp3Price, bar_index + 40, tp3Price,
+                     color=color.new(color.orange, 0), width=2, style=line.style_solid,
+                     extend=extend.right)
+
+    rrStr = fmtRR(close, slPrice, tp2Price)
+    label.new(bar_index + 1, slPrice,  "SL  " + str.tostring(slPrice,  format.mintick),
+         color=color.new(color.red,    15), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    label.new(bar_index + 1, tp1Price, "TP1 " + str.tostring(tp1Price, format.mintick),
+         color=color.new(color.lime,   30), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    label.new(bar_index + 1, tp2Price, "TP2 " + str.tostring(tp2Price, format.mintick) + "  " + rrStr,
+         color=color.new(color.lime,   10), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    if not useSimplifiedRisk
+        label.new(bar_index + 1, tp3Price, "TP3 " + str.tostring(tp3Price, format.mintick),
+             color=color.new(color.orange, 10), textcolor=color.white,
+             style=label.style_label_right, size=size.tiny)
+
+if showRisk and (po3Sel_elite or showSelBase) and not na(manipHighPrice)
+    slPrice  = manipHighPrice * (1.0 + slBuffer / 100.0)
+    tp1Price = not na(nearestBearFVGMid) ? nearestBearFVGMid : close - (slPrice - close) * 1.5
+    tp2Price = not na(htfLow) ? htfLow : close - (slPrice - close) * 2.5
+    tp3Price = not na(prevDayLow) ? prevDayLow : close - (slPrice - close) * 3.5
+
+    if not na(slLine)
+        line.delete(slLine)
+    if not na(tp1Line)
+        line.delete(tp1Line)
+    if not na(tp2Line)
+        line.delete(tp2Line)
+    if not na(tp3Line)
+        line.delete(tp3Line)
+
+    slLine  := line.new(bar_index, slPrice,  bar_index + 40, slPrice,
+                 color=color.new(color.red,    0), width=1, style=line.style_dashed,
+                 extend=extend.right)
+    tp1Line := line.new(bar_index, tp1Price, bar_index + 40, tp1Price,
+                 color=color.new(color.fuchsia, 20), width=1, style=line.style_dotted,
+                 extend=extend.right)
+    tp2Line := line.new(bar_index, tp2Price, bar_index + 40, tp2Price,
+                 color=color.new(color.fuchsia, 0), width=2, style=line.style_dotted,
+                 extend=extend.right)
+    if not useSimplifiedRisk
+        tp3Line := line.new(bar_index, tp3Price, bar_index + 40, tp3Price,
+                     color=color.new(color.orange, 0), width=2, style=line.style_solid,
+                     extend=extend.right)
+
+    rrStr = fmtRR(close, slPrice, tp2Price)
+    label.new(bar_index + 1, slPrice,  "SL  " + str.tostring(slPrice,  format.mintick),
+         color=color.new(color.red,    15), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    label.new(bar_index + 1, tp1Price, "TP1 " + str.tostring(tp1Price, format.mintick),
+         color=color.new(color.fuchsia, 30), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    label.new(bar_index + 1, tp2Price, "TP2 " + str.tostring(tp2Price, format.mintick) + "  " + rrStr,
+         color=color.new(color.fuchsia, 10), textcolor=color.white,
+         style=label.style_label_right, size=size.tiny)
+    if not useSimplifiedRisk
+        label.new(bar_index + 1, tp3Price, "TP3 " + str.tostring(tp3Price, format.mintick),
+             color=color.new(color.orange, 10), textcolor=color.white,
+             style=label.style_label_right, size=size.tiny)
+
+// ── Projected Distribution Target Box (hidden in Beginner to reduce overwhelm)
+if showTargetBox and not useSimplifiedRisk and (manipHigh or manipLow) and not (po3Buy_base or po3Sel_base)
+    if not na(tgtBox)
+        box.delete(tgtBox)
+    tgtTop    = manipLow  and not na(htfHigh) ? htfHigh : close + math.abs(close - htfOpen) * 1.5
+    tgtBottom = manipHigh and not na(htfLow)  ? htfLow  : close - math.abs(close - htfOpen) * 1.5
+    tgtBox    := box.new(bar_index, tgtTop, bar_index + 60, tgtBottom,
+                  border_color=color.new(color.purple, 40), bgcolor=targetBoxCol,
+                  text="🎯 Distribution Target", text_color=color.new(color.purple, 20),
+                  text_size=size.tiny)
+
+// =============================================================================
+// ─── CISD (Change in State of Delivery) — TTrades / ICT ──────────────────────
+// Bullish CISD: close above the last series of "Down-Close" candles (bearish OB) that led to a low.
+// Bearish CISD: close below the last series of "Up-Close" candles (bullish OB) that led to a high.
+// =============================================================================
+float lastDownCloseHigh = na
+float lastUpCloseLow   = na
+for i = 1 to cisdLookback
+    if close[i] < open[i]
+        lastDownCloseHigh := na(lastDownCloseHigh) ? high[i] : math.max(lastDownCloseHigh, high[i])
+    if close[i] > open[i]
+        lastUpCloseLow   := na(lastUpCloseLow)   ? low[i]  : math.min(lastUpCloseLow, low[i])
+if na(lastDownCloseHigh)
+    lastDownCloseHigh := high[1]
+if na(lastUpCloseLow)
+    lastUpCloseLow   := low[1]
+
+bullCISD = showCISD and isDiscount and close > lastDownCloseHigh and not po3Buy_base
+bearCISD = showCISD and isPremium  and close < lastUpCloseLow   and not po3Sel_base
+
+// title/text must be const string in Pine; use "CISD". Custom name (cisdName) applies to line label, mentor table, step 4 text.
+plotshape(bullCISD, "CISD ▲", shape.triangleup,   location.belowbar, color.new(color.lime, 20), size=size.tiny, text="CISD")
+plotshape(bearCISD, "CISD ▼", shape.triangledown, location.abovebar, color.new(color.red,  20), size=size.tiny, text="CISD")
+
+// =============================================================================
+// ─── DISTANCE TO OPEN ────────────────────────────────────────────────────────
+// =============================================================================
+distToOpen    = not na(htfOpen) ? close - htfOpen : na
+distToOpenPct = not na(htfOpen) ? distToOpen / htfOpen * 100 : na
+distStr       = not na(distToOpen) ? (distToOpen >= 0 ? "+" : "") + str.tostring(distToOpen, format.mintick) + " (" + (distToOpen >= 0 ? "+" : "") + str.tostring(distToOpenPct, "#.##") + "%)" : "N/A"
+
+// =============================================================================
+// ─── BIAS ────────────────────────────────────────────────────────────────────
+// =============================================================================
+biasTxt = (po3Buy_elitePlus)                                         ? "💎 ELITE+ BUY"  :
+           (po3Buy_elite)                                            ? "⚡ ELITE BUY"   :
+           (showBuyBase)                                             ? "🟢 BUY"         :
+           (po3Sel_elitePlus)                                        ? "💎 ELITE+ SELL" :
+           (po3Sel_elite)                                            ? "⚡ ELITE SELL"  :
+           (showSelBase)                                             ? "🔴 SELL"        :
+           po3Phase == "Accumulation"                                ? "⏳ WAIT"        :
+           (manipHigh or manipLow)                                   ? "⚠️ WATCH"      :
+           (isDiscount and po3Phase == "Distribution")               ? "🔍 SEEK LONG"  :
+           (isPremium  and po3Phase == "Distribution")               ? "🔍 SEEK SHORT" : "⚪ NEUTRAL"
+
+htfTrendTxt = isDiscount ? "📉 Discount" : isPremium ? "📈 Premium" : "⚪ At Open"
+
+// =============================================================================
+// ─── MAIN DASHBOARD ──────────────────────────────────────────────────────────
+// =============================================================================
+var table dash = na
+
+if showDash
+    if na(dash)
+        dash := table.new(position.top_right, 2, 15,
+             bgcolor=color.new(color.black, 10),
+             border_color=color.new(color.orange, 0), border_width=1,
+             frame_color=color.new(color.orange, 0),  frame_width=2)
+
+    oTx = color.new(color.orange, 0)
+    wTx = color.white
+    lBg = color.new(color.gray, 65)
+    hBg = color.new(color.black, 10)
+
+    table.cell(dash, 0, 0, "RetailBeastFX Ultra",     text_color=oTx, text_size=size.normal, bgcolor=hBg, text_halign=text.align_center)
+    table.cell(dash, 1, 0, "Ultra Alpha Mentor v5.4", text_color=oTx, text_size=size.normal, bgcolor=hBg, text_halign=text.align_center)
+
+    table.cell(dash, 0,  1, "HTF Anchor",     text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  2, "HTF Trend",      text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  3, "PO3 Phase",      text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  4, "RBFX Bias",      text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  5, "AMD Window",     text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  6, "Killzone",       text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  7, "1H RSI Filter",  text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  8, "FVG Zone",       text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0,  9, "Dist. to Open",  text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0, 10, "Signal Grade",   text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0, 11, "HTF Candle",     text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0, 12, "vs Equilibrium", text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0, 13, "Overlay TF",     text_color=wTx, text_size=size.small, bgcolor=lBg)
+    table.cell(dash, 0, 14, "Candle Closes",  text_color=wTx, text_size=size.small, bgcolor=lBg)
+
+    trendBg = isDiscount ? color.new(color.blue,   50) : isPremium ? color.new(color.red, 50) : color.new(color.gray, 50)
+    var color biasBg = color.new(color.gray, 50)
+    if str.contains(biasTxt, "ELITE+")
+        biasBg := color.new(color.aqua,   20)
+    else if str.contains(biasTxt, "ELITE")
+        biasBg := color.new(color.orange, 20)
+    else if str.contains(biasTxt, "BUY")
+        biasBg := color.new(color.green,  40)
+    else if str.contains(biasTxt, "SELL")
+        biasBg := color.new(color.red,    40)
+    else if str.contains(biasTxt, "WATCH")
+        biasBg := color.new(color.orange, 40)
+    var color po3Bg = color.new(color.purple, 50)
+    if po3Phase == "Accumulation"
+        po3Bg := color.new(color.teal,   50)
+    else if po3Phase == "Manipulation"
+        po3Bg := color.new(color.orange, 50)
+    amdTxt  = inAMDWindow ? "🟡 ACTIVE" : "✅ SEALED"
+    amdBg   = inAMDWindow ? color.new(color.yellow, 50) : color.new(color.gray, 60)
+    kzTxt   = inAsianKZ ? "🌏 Asian" : inLondonKZ ? "🇬🇧 London" : inNYKZ ? "🗽 NY Open" : "— Off"
+    kzBg    = inAsianKZ ? color.new(color.gray, 55) : inAnyKZ ? color.new(color.yellow, 40) : color.new(color.gray, 60)
+    // ── FIXED: rsiTxt and rsiNum are now defined globally above, so we just use them here
+    rsiBg   = rsiIsBull ? color.new(color.green, 50) : rsiIsBear ? color.new(color.red, 50) : color.new(color.gray, 60)
+    fvgTxt  = inBullFVG ? "🟢 Bull FVG" : inBearFVG ? "🔴 Bear FVG" : "⚪ None"
+    fvgBg   = inBullFVG ? color.new(color.green, 50) : inBearFVG ? color.new(color.red, 50) : color.new(color.gray, 60)
+    var string grade = "— NONE —"
+    if po3Buy_elitePlus or po3Sel_elitePlus
+        grade := "💎 ELITE+"
+    else if po3Buy_elite or po3Sel_elite
+        grade := "⚡ ELITE"
+    else if showBuyBase or showSelBase
+        grade := "✅ STANDARD"
+    var color gradeBg = color.new(color.gray, 60)
+    if po3Buy_elitePlus or po3Sel_elitePlus
+        gradeBg := color.new(color.aqua,   20)
+    else if po3Buy_elite or po3Sel_elite
+        gradeBg := color.new(color.orange, 20)
+    else if showBuyBase or showSelBase
+        gradeBg := color.new(color.green,  50)
+    distBg  = not na(distToOpen) ? (distToOpen > 0 ? color.new(color.red, 60) : color.new(color.blue, 60)) : color.new(color.gray, 60)
+    cndlBg  = htfCandleBull ? color.new(color.green, 50) : color.new(color.red, 50)
+    vs50Bg  = priceVs50Str == "↑ Above 50%" ? color.new(color.red, 60) : color.new(color.blue, 60)
+    msLeft  = htfTC - timenow
+    cdStr   = msLeft > 0 ? fmtCountdown(msLeft) : "Closing..."
+
+    table.cell(dash, 1,  1, anchorType,      text_color=oTx, text_size=size.small, bgcolor=color.new(color.black, 30))
+    table.cell(dash, 1,  2, htfTrendTxt,     text_color=wTx, text_size=size.small, bgcolor=trendBg)
+    table.cell(dash, 1,  3, po3Phase,        text_color=wTx, text_size=size.small, bgcolor=po3Bg)
+    table.cell(dash, 1,  4, biasTxt,         text_color=wTx, text_size=size.small, bgcolor=biasBg)
+    table.cell(dash, 1,  5, amdTxt,          text_color=wTx, text_size=size.small, bgcolor=amdBg)
+    table.cell(dash, 1,  6, kzTxt,           text_color=wTx, text_size=size.small, bgcolor=kzBg)
+    table.cell(dash, 1,  7, rsiTxt,          text_color=wTx, text_size=size.small, bgcolor=rsiBg)
+    table.cell(dash, 1,  8, fvgTxt,          text_color=wTx, text_size=size.small, bgcolor=fvgBg)
+    table.cell(dash, 1,  9, distStr,         text_color=wTx, text_size=size.small, bgcolor=distBg)
+    table.cell(dash, 1, 10, grade,           text_color=wTx, text_size=size.small, bgcolor=gradeBg)
+    table.cell(dash, 1, 11, htfCandleStatus, text_color=wTx, text_size=size.small, bgcolor=cndlBg)
+    table.cell(dash, 1, 12, priceVs50Str,    text_color=wTx, text_size=size.small, bgcolor=vs50Bg)
+    table.cell(dash, 1, 13, overlayTF,       text_color=oTx, text_size=size.small, bgcolor=color.new(color.black, 30))
+    table.cell(dash, 1, 14, cdStr,           text_color=color.new(color.orange, 0), text_size=size.small, bgcolor=color.new(color.black, 30))
+
+// =============================================================================
+// ─── STEP-BY-STEP GUIDANCE PANEL (NEW v5.4) ──────────────────────────────────
+// =============================================================================
+var table guide = na
+
+if showGuide
+    if na(guide)
+        guide := table.new(position.bottom_left, 3, 11,
+              bgcolor=color.new(color.black, 15),
+              border_color=color.new(color.orange, 30), border_width=1,
+              frame_color=color.new(color.orange, 20),  frame_width=2)
+
+    wTx  = color.white
+    oTx  = color.new(color.orange, 0)
+    gBg  = color.new(color.black, 20)
+    dBg  = color.new(color.gray,  70)
+
+    // Header
+    table.cell(guide, 0, 0, "📋",            text_color=oTx, text_size=size.small, bgcolor=gBg)
+    table.cell(guide, 1, 0, "Step",           text_color=oTx, text_size=size.small, bgcolor=gBg)
+    table.cell(guide, 2, 0, "Status / Action",text_color=oTx, text_size=size.small, bgcolor=gBg, text_halign=text.align_left)
+
+    // ── HTF Alignment (TTrades: Daily→1H, Weekly→4H. 1H RSI = bias for structure.)
+    htfAlignTxt   = "1H " + (rsiIsBull ? "Bullish" : rsiIsBear ? "Bearish" : "Neutral") + " Alignment"
+    htfAlignBg    = rsiIsBull ? color.new(color.lime, 60) : rsiIsBear ? color.new(color.red, 60) : color.new(color.gray, 60)
+    table.cell(guide, 0, 1, useMTFRSI ? (rsiIsBull ? "📈" : rsiIsBear ? "📉" : "↔") : "—", text_color=wTx, text_size=size.small, bgcolor=htfAlignBg)
+    table.cell(guide, 1, 1, "HTF Align", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 1, (useMTFRSI ? htfAlignTxt + " (RSI " + rsiNum + ")" : "Off — no filter"), text_color=wTx, text_size=size.small, bgcolor=htfAlignBg, text_halign=text.align_left)
+
+    // ── Fractional Narrative (TTrades: HTF liquidity → LTF CISD → aligned entry.)
+    htfRef       = anchorType == "NY Midnight" ? "Session" : anchorType
+    ltfRef       = timeframe.isintraday ? str.tostring(timeframe.period) + "m" : "LTF"
+    string fractionLogic = ""
+    if not anySweep
+        fractionLogic := "HTF Phase: Waiting for " + htfRef + " Liquidity (Red/Blue)"
+    else if anySweep and not po3Buy_base and not po3Sel_base
+        fractionLogic := "LTF Phase: " + htfRef + " Tapped. Watch " + ltfRef + " for " + cisdName
+    else if po3Buy_base or po3Sel_base
+        fractionLogic := "ALIGNED: " + ltfRef + " State changed. Institutional Flow: " + (po3Buy_base ? "BUY" : "SELL")
+    fracBg       = po3Buy_base or po3Sel_base ? color.new(color.blue, 50) : anySweep ? color.new(color.blue, 70) : color.new(color.gray, 70)
+    table.cell(guide, 0, 2, "🔀", text_color=wTx, text_size=size.small, bgcolor=fracBg)
+    table.cell(guide, 1, 2, "Fractional", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 2, fractionLogic, text_color=color.white, text_size=size.small, bgcolor=fracBg, text_halign=text.align_left)
+
+    // ── Phase instruction (teaching text for beginners)
+    phaseInstruction = mentorMode == "Beginner" ? (po3Phase == "Accumulation" ? "Do nothing. Wait for sweep." : po3Phase == "Manipulation" ? "Liquidity taken. Watch for displacement." : "Move complete. Manage risk.") : ""
+    phaseRowBg = po3Phase == "Accumulation" ? color.new(color.yellow, 70) : po3Phase == "Manipulation" ? color.new(color.orange, 70) : color.new(color.green, 70)
+    table.cell(guide, 0, 3, "▶", text_color=oTx, text_size=size.small, bgcolor=phaseRowBg)
+    table.cell(guide, 1, 3, "Phase", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 3, mentorMode == "Beginner" ? phaseInstruction : po3Phase, text_color=wTx, text_size=size.small, bgcolor=phaseRowBg, text_halign=text.align_left)
+
+    // ── Step 1: Midnight Open passed?
+    step1done = not na(htfOpen)
+    s1Icon    = step1done ? "✅" : "⏳"
+    s1Txt     = step1done ? "Open @ " + str.tostring(htfOpen, format.mintick) : "Waiting for " + anchorType
+    s1Bg      = step1done ? color.new(color.green, 60) : color.new(color.gray, 60)
+    table.cell(guide, 0, 4, s1Icon, text_color=wTx, text_size=size.small, bgcolor=s1Bg)
+    table.cell(guide, 1, 4, "1 · Wait for Open", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 4, s1Txt,  text_color=wTx, text_size=size.small, bgcolor=s1Bg, text_halign=text.align_left)
+
+    // ── Step 2: Accumulation sealed?
+    step2done = step1done and not inAMDWindow
+    s2Icon    = inAMDWindow ? "🟡" : step2done ? "✅" : "—"
+    s2Txt     = inAMDWindow ? "Accumulating… (" + str.tostring(amdHours) + "h window)" : step2done ? "AMD sealed. Range established." : "Wait for Step 1"
+    s2Bg      = inAMDWindow ? color.new(color.yellow, 50) : step2done ? color.new(color.green, 60) : color.new(color.gray, 70)
+    table.cell(guide, 0, 5, s2Icon, text_color=wTx, text_size=size.small, bgcolor=s2Bg)
+    table.cell(guide, 1, 5, "2 · Accumulation", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 5, s2Txt,  text_color=wTx, text_size=size.small, bgcolor=s2Bg, text_halign=text.align_left)
+
+    // ── Step 3: Manipulation sweep?
+    step3done = step2done and (manipHigh or manipLow)
+    s3Icon    = anySweep ? "🔴" : step3done ? "✅" : "—"
+    s3Txt     = (sweptHTFHigh or sweptPDH or sweptAMDHigh) ? "⚠️ High swept! Bearish reversal" : (sweptHTFLow or sweptPDL or sweptAMDLow) ? "⚠️ Low swept! Bullish reversal" : step3done ? "Sweep confirmed." : "Watching for sweep..."
+    s3Bg      = anySweep ? color.new(color.orange, 30) : step3done ? color.new(color.green, 60) : color.new(color.gray, 70)
+    table.cell(guide, 0, 6, s3Icon, text_color=wTx, text_size=size.small, bgcolor=s3Bg)
+    table.cell(guide, 1, 6, "3 · Sweep / Manip", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 6, s3Txt,  text_color=wTx, text_size=size.small, bgcolor=s3Bg, text_halign=text.align_left)
+
+    // ── Step 4: CISD / Displacement confirmed?
+    step4done = step3done and (po3Buy_base or po3Sel_base or bullCISD or bearCISD)
+    s4Icon    = (po3Buy_base or po3Sel_base) ? "⚡" : (bullCISD or bearCISD) ? "🔔" : step4done ? "✅" : "—"
+    var string s4Txt = ""
+    if po3Buy_base
+        s4Txt := "Displacement BUY confirmed"
+    else if po3Sel_base
+        s4Txt := "Displacement SELL confirmed"
+    else if bullCISD
+        s4Txt := cisdName + " ▲ — look for entry above prev high"
+    else if bearCISD
+        s4Txt := cisdName + " ▼ — look for entry below prev low"
+    else if step3done
+        s4Txt := "Waiting for displacement candle..."
+    else
+        s4Txt := "Wait for Step 3"
+    s4Bg      = (po3Buy_base or po3Sel_base) ? color.new(color.lime, 30) : (bullCISD or bearCISD) ? color.new(color.teal, 40) : color.new(color.gray, 70)
+    table.cell(guide, 0, 7, s4Icon, text_color=wTx, text_size=size.small, bgcolor=s4Bg)
+    table.cell(guide, 1, 7, "4 · " + cisdName + " / Disp",   text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 7, s4Txt,  text_color=wTx, text_size=size.small, bgcolor=s4Bg, text_halign=text.align_left)
+
+    // ── Step 5: Killzone active + RSI aligned?
+    step5ok = inAnyKZ and ((po3Buy_base and rsiAllowBuy) or (po3Sel_base and rsiAllowSel))
+    s5Icon  = step5ok ? "✅" : inAnyKZ ? "🟡" : "⚠️"
+    s5Txt   = step5ok ? "In KZ + RSI aligned. Consider entry!" : inAnyKZ ? "In KZ. RSI: " + rsiTxt + ". Await signal." : "Outside KZ. Signals filtered. Wait."
+    s5Bg    = step5ok ? color.new(color.green, 30) : inAnyKZ ? color.new(color.yellow, 50) : color.new(color.orange, 60)
+    table.cell(guide, 0, 8, s5Icon, text_color=wTx, text_size=size.small, bgcolor=s5Bg)
+    table.cell(guide, 1, 8, "5 · Killzone+RSI", text_color=wTx, text_size=size.small, bgcolor=dBg)
+    table.cell(guide, 2, 8, s5Txt,  text_color=wTx, text_size=size.small, bgcolor=s5Bg, text_halign=text.align_left)
+
+    // ── Narrative: "What to do RIGHT NOW"
+    var string narrative = ""
+    if po3Buy_elitePlus or po3Sel_elitePlus
+        narrative := "💎 ELITE+ signal active. Highest probability. Check SL/TP levels."
+    else if po3Buy_elite or po3Sel_elite
+        narrative := "⚡ Elite signal. FVG+Sweep+Disp confirmed. Enter with defined risk."
+    else if showBuyBase or showSelBase
+        narrative := "✅ Standard signal. Valid setup — await KZ for better odds."
+    else if sweptHTFLow or sweptPDL or sweptAMDLow
+        narrative := mentorMode == "Beginner" ? "🕵️ Low swept. Wait for CISD (close above last bear candle) then displacement to confirm Distribution." : "🕵️ Low swept. Watch for displacement candle ABOVE sweep low."
+    else if sweptHTFHigh or sweptPDH or sweptAMDHigh
+        narrative := mentorMode == "Beginner" ? "🕵️ High swept. Wait for CISD (close below last bull candle) then displacement to confirm Distribution." : "🕵️ High swept. Watch for displacement candle BELOW sweep high."
+    else if inAMDWindow
+        narrative := "⏳ AMD window open. Institutions accumulating. Do NOT trade yet."
+    else if po3Phase == "Distribution" and isDiscount
+        narrative := "📉 Discount + Distribution. Seek bullish CISD or low sweep."
+    else if po3Phase == "Distribution" and isPremium
+        narrative := "📈 Premium + Distribution. Seek bearish CISD or high sweep."
+    else
+        narrative := "⚪ Standby. No narrative active. Wait for AMD box to seal."
+
+    var color narBg = color.new(color.gray, 65)
+    if po3Buy_elitePlus or po3Sel_elitePlus
+        narBg := color.new(color.aqua,   30)
+    else if po3Buy_elite or po3Sel_elite
+        narBg := color.new(color.lime,   40)
+    else if showBuyBase or showSelBase
+        narBg := color.new(color.green,  50)
+    else if manipHigh or manipLow
+        narBg := color.new(color.orange, 40)
+    else if inAMDWindow
+        narBg := color.new(color.yellow, 50)
+
+    table.cell(guide, 0, 9, "▶",       text_color=oTx, text_size=size.small, bgcolor=narBg)
+    table.cell(guide, 1, 9, "Next Move",text_color=oTx, text_size=size.small, bgcolor=narBg)
+    table.cell(guide, 2, 9, narrative,  text_color=wTx, text_size=size.small, bgcolor=narBg, text_halign=text.align_left)
+
+    // ── TTrades Fractal: Candle 2 | CISD | Candle 3 (eye-training legend)
+    table.cell(guide, 0, 10, "📖", text_color=oTx, text_size=size.tiny, bgcolor=gBg)
+    table.cell(guide, 1, 10, "Pattern", text_color=oTx, text_size=size.tiny, bgcolor=gBg)
+    table.cell(guide, 2, 10, "C2 Rejection → CISD State flip → C3 OB entry", text_color=color.new(color.gray, 20), text_size=size.tiny, bgcolor=gBg, text_halign=text.align_left)
+
+// =============================================================================
+// ─── SESSION SCORE (Today's Structure — review structure, not PnL) ───────────
+// =============================================================================
+var table scoreTbl = na
+if showSessionScore and barstate.islast
+    if na(scoreTbl)
+        scoreTbl := table.new(position.bottom_right, 2, 6, bgcolor=color.new(color.black, 15), border_color=color.new(color.orange, 40), border_width=1)
+    table.cell(scoreTbl, 0, 0, "Today's Structure", text_color=color.new(color.orange, 0), text_size=size.small, bgcolor=color.new(color.black, 30))
+    table.merge_cells(scoreTbl, 0, 0, 1, 0)
+    table.cell(scoreTbl, 0, 1, "Sweeps",        text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 70))
+    table.cell(scoreTbl, 1, 1, str.tostring(sessSweeps), text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 60))
+    table.cell(scoreTbl, 0, 2, "Displacements",text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 70))
+    table.cell(scoreTbl, 1, 2, str.tostring(sessDispl),  text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 60))
+    table.cell(scoreTbl, 0, 3, "Elite",        text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 70))
+    table.cell(scoreTbl, 1, 3, str.tostring(sessElite),  text_color=color.new(color.lime, 0), text_size=size.tiny, bgcolor=color.new(color.gray, 60))
+    table.cell(scoreTbl, 0, 4, "Elite+",       text_color=color.white, text_size=size.tiny, bgcolor=color.new(color.gray, 70))
+    table.cell(scoreTbl, 1, 4, str.tostring(sessElitePlus), text_color=color.new(color.aqua, 0), text_size=size.tiny, bgcolor=color.new(color.gray, 60))
+    table.cell(scoreTbl, 0, 5, "Review structure", text_color=color.new(color.gray, 30), text_size=size.tiny, bgcolor=color.new(color.black, 40))
+    table.merge_cells(scoreTbl, 0, 5, 1, 5)
+
+// =============================================================================
+// ─── FREEZE FRAME (highlight Sweep → Displacement after Elite+) ──────────────
+// =============================================================================
+var box   freezeSweepBox = na
+var box   freezeDispBox  = na
+var label freezeLbl1     = na
+var label freezeLbl2     = na
+if barstate.islast and showFreezeFrame and not na(lastElitePlusBar) and not na(lastSweepBar) and lastSweepBar < lastElitePlusBar and (bar_index - lastElitePlusBar < 200)
+    offS = bar_index - lastSweepBar
+    offD = bar_index - lastElitePlusBar
+    if not na(freezeSweepBox)
+        box.delete(freezeSweepBox)
+    if not na(freezeDispBox)
+        box.delete(freezeDispBox)
+    if not na(freezeLbl1)
+        label.delete(freezeLbl1)
+    if not na(freezeLbl2)
+        label.delete(freezeLbl2)
+    freezeSweepBox := box.new(lastSweepBar, high[offS], lastSweepBar + 1, low[offS], border_color=color.new(color.orange, 30), bgcolor=color.new(color.orange, 90), border_width=2)
+    freezeDispBox  := box.new(lastElitePlusBar, high[offD], lastElitePlusBar + 1, low[offD], border_color=color.new(color.lime, 30), bgcolor=color.new(color.lime, 90), border_width=2)
+    freezeLbl1     := label.new(lastSweepBar, high[offS], "1. SWEEP", style=label.style_label_down, color=color.new(color.orange, 20), textcolor=color.white, size=size.small)
+    freezeLbl2     := label.new(lastElitePlusBar, high[offD], "2. DISPLACEMENT\n→ FVG → KZ", style=label.style_label_down, color=color.new(color.lime, 20), textcolor=color.black, size=size.small)
+else if barstate.islast
+    if not na(freezeSweepBox)
+        box.delete(freezeSweepBox)
+        freezeSweepBox := na
+    if not na(freezeDispBox)
+        box.delete(freezeDispBox)
+        freezeDispBox := na
+    if not na(freezeLbl1)
+        label.delete(freezeLbl1)
+        freezeLbl1 := na
+    if not na(freezeLbl2)
+        label.delete(freezeLbl2)
+        freezeLbl2 := na
+
+// =============================================================================
+// ─── NARRATIVE ALERTS (NEW v5.4) ─────────────────────────────────────────────
+// =============================================================================
+crossedHTFOpen = not na(htfOpen) and ta.cross(close, htfOpen)
+
+if alertOpen and crossedHTFOpen
+    msg = beginnerMode
+         ? "RetailBeastFX: " + anchorType + " Open crossed (" + str.tostring(htfOpen, format.mintick) + "). Manipulation phase begins. Wait for sweep then displacement candle."
+         : "RetailBeastFX: Session Open crossed. Manipulation phase begins. Watch for liquidity sweep."
+    alert(msg, alert.freq_once_per_bar)
+
+if alertSweepOn and anySweep
+    dir    = (sweptHTFLow or sweptPDL or sweptAMDLow) ? "LOW" : "HIGH"
+    action = (sweptHTFLow or sweptPDL or sweptAMDLow) ? "bullish" : "bearish"
+    kzName = inLondonKZ ? "London Killzone" : inNYKZ ? "NY Open Killzone" : "current session"
+    zone   = (sweptAMDLow or sweptAMDHigh) ? "Asia/AMD range" : (sweptPDL or sweptPDH) ? "PDL/PDH" : "session"
+    msg    = beginnerMode
+         ? "RetailBeastFX: We just swept the " + zone + " " + dir + " during the " + kzName + ". Potential Judas Swing. Wait for a CISD (close " + (action == "bullish" ? "above the last bear candle" : "below the last bull candle") + ") to confirm the shift to Distribution."
+         : "RetailBeastFX: Sweep detected. Manipulation active — watch for CISD + Displacement."
+    alert(msg, alert.freq_once_per_bar)
+
+if alertElite and (po3Buy_elitePlus or po3Sel_elitePlus)
+    dir = po3Buy_elitePlus ? "LONG" : "SHORT"
+    msg = beginnerMode
+         ? "RetailBeastFX 💎 ELITE+ " + dir + " — KZ + Sweep + Displacement + FVG. Highest confluence. Check SL/TP."
+         : "RetailBeastFX 💎 ELITE+ PO3 " + dir + " — KZ + Sweep + Displacement + FVG. Highest confluence."
+    alert(msg, alert.freq_once_per_bar)
+
+else if alertElite and (po3Buy_elite or po3Sel_elite)
+    dir = po3Buy_elite ? "LONG" : "SHORT"
+    msg = beginnerMode
+         ? "RetailBeastFX ⚡ ELITE " + dir + " signal! FVG+Sweep+Disp confirmed. No KZ — reduce size or wait."
+         : "RetailBeastFX ⚡ ELITE PO3 — Sweep + Displacement + FVG confluence confirmed."
+    alert(msg, alert.freq_once_per_bar)
+
+else if alertElite and (showBuyBase or showSelBase)
+    dir = showBuyBase ? "LONG" : "SHORT"
+    msg = beginnerMode
+         ? "RetailBeastFX ✅ Standard " + dir + " setup. Sweep + Displacement confirmed. RSI aligned. For higher probability, wait for an Elite signal with FVG confluence."
+         : "RetailBeastFX ✅ Standard PO3 " + dir + " — Sweep + Displacement. No FVG."
+    alert(msg, alert.freq_once_per_bar)
+
+// =============================================================================
+// END — RetailBeastFX: Ultra Alpha Mentor v5.4 SMART MENTOR EDITION
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNAL HIERARCHY (highest → lowest):
+//   💎 ELITE+   = KZ + FVG + Sweep + Displacement  ← best setups only
+//   ⚡ ELITE    = FVG + Sweep + Displacement
+//   ✅ STANDARD = Sweep + Displacement (RSI + KZ filtered)
+//
+// GUIDANCE PANEL steps 1→5 walk the beginner through the full narrative.
+// Each step shows live status. "Next Move" row tells them exactly what to do.
+//
+// USAGE:
+//   • Set right-margin bars ≥ 20 (right-click chart → Settings → Chart)
+//   • Overlay TF = D on 1m/5m/15m; 240 on 15m/1h
+//   • Killzones auto-detect London 02–05 and NY 07–10 in NY time
+// =============================================================================

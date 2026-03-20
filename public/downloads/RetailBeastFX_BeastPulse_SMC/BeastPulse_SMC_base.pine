@@ -1,0 +1,1500 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// © RetailBeastFX Protocol - BeastPulse SMC [ULTIMATE: Auto Mode + Profiles + HTF + Dynamic Risk]
+
+//@version=5
+strategy("RetailBeastFX – BeastPulse SMC", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=10, currency=currency.USD, calc_on_every_tick=true, max_boxes_count=200, max_lines_count=200, max_labels_count=200)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ SYSTEM MODE ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ SETTINGS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── INPUT GROUPS (organized, less clutter) ───
+grpSetup   = "1. Setup"
+grpTime    = "2. Session & Time Blocks"
+grpRisk    = "3. Risk & Trend Filter"
+grpFilters = "4. Trade Filters"
+grpSMC     = "5. SMC (Order Blocks & FVG)"
+grpStr     = "6. ORB & Structure"
+grpVis     = "7. Chart & Alerts"
+
+// ─── 1. SETUP ───
+string profile = input.string("Intraday", "Profile", options=["Scalp", "Intraday", "Swing", "Custom"], group=grpSetup, tooltip="Scalp 5/15 | Intraday 9/30 | Swing 21/50 | Custom = manual MAs")
+string modeBase = input.string("SMC", "Mode", options=["Standard", "ORB", "SMC", "Custom", "Auto"], group=grpSetup, tooltip="Auto = switches by time & volatility")
+string assetType = input.string("Commodities", "Asset", options=["Forex", "Indices", "Crypto", "Commodities"], group=grpSetup)
+string sessionPreset = input.string("New York", "Session", options=["New York", "London", "Asia", "Sydney", "Globex", "Crypto", "Custom"], group=grpSetup)
+bool _useSessionFilter = input.bool(true, "Enforce Session", group=grpSetup, tooltip="OFF = trade 24/7 (e.g. Crypto)")
+
+// Custom session (only used when Session = Custom)
+string _customORB = input.session("0930-0945", "  ORB (Custom)", group=grpSetup)
+string _customTrading = input.session("0930-1600", "  Trade (Custom)", group=grpSetup)
+string _customRails = input.session("0930-0935", "  Rail (Custom)", group=grpSetup)
+
+// ─── 2. SESSION & TIME BLOCKS ───
+bool useLunchFilter = input.bool(true, "Block Lunch", group=grpTime)
+string lunchSession = input.session("1200-1300", "  Lunch Window", group=grpTime)
+bool useNewsFilter = input.bool(false, "Block News", group=grpTime)
+string newsSession = input.session("0825-0835", "  News Window", group=grpTime)
+
+// ─── SESSION LAYER (one source of truth) ───
+getSession(preset, type) =>
+    switch preset
+        "New York" => type == "ORB" ? "0930-0945" : type == "Rails" ? "0930-0935" : "0930-1600"
+        "London"   => type == "ORB" ? "0300-0315" : type == "Rails" ? "0300-0305" : "0300-1200"
+        "Asia"     => type == "ORB" ? "1900-1915" : type == "Rails" ? "1900-1905" : "1900-0400"
+        "Sydney"   => type == "ORB" ? "1700-1715" : type == "Rails" ? "1700-1705" : "1700-0200"
+        "Globex"   => type == "ORB" ? "1800-1815" : type == "Rails" ? "1800-1805" : "1800-0930"
+        "Crypto"   => type == "ORB" ? "0000-0015" : type == "Rails" ? "0000-0005" : "0000-2359"
+        => type == "ORB" ? "0930-0945" : type == "Rails" ? "0930-0935" : "0930-1600"
+
+string orbSession     = sessionPreset == "Custom" ? _customORB     : getSession(sessionPreset, "ORB")
+string railsSession   = sessionPreset == "Custom" ? _customRails   : getSession(sessionPreset, "Rails")
+string tradingSession = sessionPreset == "Custom" ? _customTrading : getSession(sessionPreset, "Trade")
+
+// Timezone: Crypto = UTC; else NY (used by inTime and hour())
+string tz = assetType == "Crypto" ? "Etc/UTC" : "America/New_York"
+
+// Session-in-window helper (single place for time() calls)
+inTime(sess) =>
+    not na(time(timeframe.period, sess + ":1234567", tz))
+
+var bool inSession = true  // Set after finalUseSession below
+bool inORB      = inTime(orbSession)
+bool inRailSnap = inTime(railsSession)
+
+// ─── 3. RISK & TREND FILTER ───
+float profitFactor = input.float(2.0, "Target R:R", step=0.5, group=grpRisk)
+float _stopFactor = input.float(1.0, "Stop (ATR)", step=0.1, group=grpRisk, tooltip="Custom mode only")
+bool useHTFTrend = input.bool(true, "HTF Trend Filter", group=grpRisk)
+string htfTrendTf = input.string("D", "  HTF TF", options=["D","W"], group=grpRisk)
+int htfMaLen = input.int(50, "  HTF MA", minval=5, group=grpRisk)
+bool useDynRR = input.bool(true, "Dynamic R:R", group=grpRisk, tooltip="Adjust R:R by volatility")
+float rrLowVol = input.float(1.5, "  Low Vol", step=0.1, group=grpRisk)
+float rrNormVol = input.float(2.0, "  Normal", step=0.1, group=grpRisk)
+float rrHighVol = input.float(2.5, "  High Vol", step=0.1, group=grpRisk)
+bool useDynStop = input.bool(true, "Dynamic Stop", group=grpRisk)
+float stopTight = input.float(0.7, "  Tight", step=0.1, group=grpRisk)
+float stopNormal = input.float(1.0, "  Normal", step=0.1, group=grpRisk)
+float stopWide = input.float(1.4, "  Wide", step=0.1, group=grpRisk)
+bool useStreakBoost = input.bool(false, "Win Streak Boost", group=grpRisk)
+int streakLookback = input.int(20, "  Lookback", group=grpRisk, minval=5)
+bool useBreakeven = input.bool(true, "Breakeven", group=grpRisk, tooltip="Move SL to entry after % of target")
+float breakevenPct = input.float(50, "  At % to Target", minval=10, maxval=99, group=grpRisk)
+bool useCircuitBreaker = input.bool(false, "Circuit Breaker", group=grpRisk, tooltip="Stop trading for the day after % equity loss")
+float circuitBreakerPct = input.float(5, "  Max Daily Loss %", minval=1, maxval=20, group=grpRisk)
+
+// ─── 4. TRADE FILTERS ───
+bool disableLowAtr = input.bool(true, "Block Low ATR", group=grpFilters)
+float atrPctMin = input.float(0.15, "  Min ATR%", step=0.05, group=grpFilters)
+float consolEMAPct = input.float(0.4, "Chop %", step=0.1, group=grpFilters)
+float consolMaxMovePct = input.float(0.6, "Range %", step=0.1, group=grpFilters)
+int rangeBarCount = input.int(20, "Lookback", group=grpFilters)
+int volumePeriod = input.int(8, "Volume Period", group=grpFilters)
+float _momentumBodyMult = input.float(1.2, "Body Mult", step=0.1, group=grpFilters)
+
+// MAs & RSI (Profile=Custom uses Fast/Slow; else Profile sets them)
+string maType = input.string("EMA", "MA Type", options=["EMA", "SMA", "WMA", "VWMA"], group=grpFilters)
+int fastLen = input.int(9, "Fast MA", minval=1, group=grpFilters, tooltip="When Profile = Custom")
+int slowLen = input.int(30, "Slow MA", minval=1, group=grpFilters, tooltip="When Profile = Custom")
+int rsiLen = input.int(14, "RSI Len", minval=2, group=grpFilters)
+int rsiOB = input.int(70, "RSI OB", minval=50, maxval=100, group=grpFilters)
+int rsiOS = input.int(25, "RSI OS", minval=0, maxval=50, group=grpFilters)
+bool useMTFRSI = input.bool(true, "MTF RSI Filter", group=grpFilters, tooltip="Block longs when HTF RSI overbought, shorts when oversold")
+int htfRsiOB = input.int(72, "  HTF RSI OB", minval=60, maxval=90, group=grpFilters)
+int htfRsiOS = input.int(28, "  HTF RSI OS", minval=10, maxval=40, group=grpFilters)
+
+// ─── 5. SMC (Order Blocks & FVG) ───
+bool _requireSMCInput = input.bool(false, "SMC Filter", group=grpSMC, tooltip="Custom mode: require SMC confluence")
+int minPatternScoreSMC = input.int(4, "Min Score", maxval=5, group=grpSMC)
+float fvgMinPct = input.float(20, "FVG Min %", step=5, group=grpSMC)
+float obProximityMult = input.float(1.2, "OB Proximity", step=0.1, group=grpSMC)
+bool smcVisuals = input.bool(true, "Show SMC", group=grpSMC)
+bool showOBVisuals = input.bool(true, "Show OBs", group=grpSMC)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ENGINE CORE — Calculations (before mode logic) ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// --- Profile-based effective MA lengths (Scalp=5/15, Intraday=9/30, Swing=21/50, Custom=manual) ---
+getProfileFast(p) => p == "Scalp" ? 5 : p == "Intraday" ? 9 : p == "Swing" ? 21 : fastLen
+getProfileSlow(p) => p == "Scalp" ? 15 : p == "Intraday" ? 30 : p == "Swing" ? 50 : slowLen
+int effectiveFastLen = getProfileFast(profile)
+int effectiveSlowLen = getProfileSlow(profile)
+
+// --- Moving Averages (single helper) ---
+getMA(src, len) =>
+    if maType == "EMA"
+        ta.ema(src, len)
+    else if maType == "SMA"
+        ta.sma(src, len)
+    else if maType == "WMA"
+        ta.wma(src, len)
+    else if maType == "VWMA"
+        ta.vwma(src, len)
+    else
+        ta.ema(src, len)
+
+float fastMA = getMA(close, effectiveFastLen)
+float slowMA = getMA(close, effectiveSlowLen)
+float rsiVal = ta.rsi(close, rsiLen)
+float atrVal = ta.atr(14)
+
+// ATR as percentage of price (needed for auto-mode)
+float atrPct = (atrVal / close) * 100
+
+// Time-of-day helper (uses tz: NY for most, UTC for Crypto) for Auto mode
+int nyHour = hour(time, tz)
+
+// Mode as pure function (no mutable var)
+getMode() =>
+    if modeBase != "Auto"
+        modeBase
+    else if atrPct > 0.8
+        "SMC"
+    else if nyHour >= 9 and nyHour < 11
+        "ORB"
+    else if nyHour >= 13 and nyHour < 15
+        "Standard"
+    else
+        "Standard"
+
+string mode = getMode()
+
+// HTF trend + MTF RSI via single security call (one request = less overhead; no repaint)
+[htfClose, htfMA, htfRSI] = request.security(syminfo.tickerid, htfTrendTf, [close, ta.ema(close, htfMaLen), ta.rsi(close, rsiLen)], lookahead=barmerge.lookahead_off)
+
+bool htfBull = htfClose > htfMA
+bool htfBear = htfClose < htfMA
+
+// Time-based block windows
+bool lunchNow = inTime(lunchSession)
+bool newsNow  = inTime(newsSession)
+
+// Logic Catch-up (Variables dependent on Mode)
+bool finalUseSession = mode == "SMC" ? false : (mode == "Custom" ? _useSessionFilter : true)
+// Auto-disable session filter for Crypto preset (24/7 markets)
+if sessionPreset == "Crypto"
+    finalUseSession := false
+
+// Now properly set inSession based on finalUseSession (cast to bool)
+inSession := finalUseSession ? inTime(tradingSession) : true
+
+float baseStop = mode == "SMC" ? 0.8 : (mode == "Custom" ? _stopFactor : 1.0)
+float finalMomMult   = mode == "SMC" ? 1.1 : (mode == "Custom" ? _momentumBodyMult : 1.2)
+bool requireSMC      = mode == "SMC" ? true : (mode == "Custom" ? _requireSMCInput : false)
+int finalMinScoreSMC = mode == "SMC" ? 4 : (mode == "Custom" ? minPatternScoreSMC : 4)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ TIMEFRAME ADAPTIVE PARAMETERS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+getTfTier() =>
+    int m = timeframe.in_seconds(timeframe.period) / 60
+    m <= 1 ? 0 : m <= 5 ? 1 : m <= 15 ? 2 : 3
+
+int tfTier = getTfTier()
+var cooldownArr = array.from(3, 6, 8, 12)
+var obProxArr = array.from(1.0, 1.25, 1.5, 1.8)
+var fvgArr = array.from(12.0, 20.0, 25.0, 30.0)
+
+int adaptiveCooldown = array.get(cooldownArr, tfTier)
+float obProxMultiplier = array.get(obProxArr, tfTier)
+float finalOBProx = obProximityMult * obProxMultiplier
+int finalMinScoreAdaptive = tfTier == 3 ? math.max(finalMinScoreSMC, 5) : finalMinScoreSMC
+float adaptiveFVG = array.get(fvgArr, tfTier)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ RISK LAYER — Dynamic R:R, stop, streak (immutable finalStopFact) ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Volatility state (0=low, 1=normal, 2=high)
+getVolBucket() =>
+    atrPct < 0.2 ? 0 : atrPct > 0.8 ? 2 : 1
+
+int volState = getVolBucket()
+
+float baseRR = not useDynRR ? profitFactor :
+     volState == 0 ? rrLowVol :
+     volState == 2 ? rrHighVol :
+                     rrNormVol
+
+float baseDynStop = volState == 0 ? stopTight : volState == 2 ? stopWide : stopNormal
+float finalStopFact = useDynStop ? baseDynStop : baseStop
+
+// Win streak from closed trades (update only when a new trade closes)
+var int winStreak = 0
+var int _prevClosed = 0
+if strategy.closedtrades > _prevClosed
+    bool lastWin = strategy.closedtrades.profit(strategy.closedtrades - 1) > 0
+    winStreak := lastWin ? winStreak + 1 : 0
+_prevClosed := strategy.closedtrades
+
+float streakMult = useStreakBoost and winStreak >= 2 ? 1.2 : 1.0
+float adaptiveRR = baseRR * streakMult
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ UI LAYER — Mode Advisor (isolated from engine) ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+getModeAdvice(asset, mode, tier, session) =>
+    color opt = color.new(#66BB6A, 0)
+    color good = color.new(#4FC3F7, 0)
+    color tip = color.new(#FFA726, 0)
+    color warn = color.new(#FF5252, 0)
+    bool t1 = tier == 0
+    bool t57 = tier == 1 or tier == 2
+    bool tHTF = tier == 3
+    if asset == "Crypto"
+        if mode == "SMC" and t1
+            ["OPTIMAL: SMC for Crypto Scalps", opt]
+        else if mode == "SMC" and t57
+            ["Good: SMC on Crypto 5m-15m", good]
+        else if mode != "SMC"
+            ["Crypto? Try SMC mode (24/7)", tip]
+        else
+            ["Configuration looks good", good]
+    else if asset == "Indices"
+        if mode == "ORB" and t57
+            ["OPTIMAL: ORB for Index Breakouts", opt]
+        else if mode == "SMC"
+            ["Indices? Try ORB mode (NY session)", tip]
+        else if mode == "Standard" and t57
+            ["Good for index swings", good]
+        else
+            ["Configuration looks good", good]
+    else if asset == "Forex"
+        if mode == "ORB" and t57 and session == "London"
+            ["OPTIMAL: London ORB for EUR/GBP", opt]
+        else if mode == "Standard" and t57
+            ["OPTIMAL: Standard for FX", opt]
+        else if mode == "SMC" and t1
+            ["Good: SMC for FX scalps", good]
+        else if mode == "SMC" and (t57 or tHTF)
+            ["FX HTF? Try Standard/ORB", tip]
+        else
+            ["Configuration looks good", good]
+    else
+        if mode == "SMC" and t1
+            ["OPTIMAL: SMC on 1m", opt]
+        else if mode == "SMC" and (t57 or tHTF)
+            ["SMC best on 1m - Try ORB/Standard", warn]
+        else if mode == "ORB" and t1
+            ["ORB better on 5m+ - Try SMC", tip]
+        else if mode == "ORB" and t57
+            ["OPTIMAL: ORB on intraday", opt]
+        else if mode == "ORB" and tHTF
+            ["Try Standard on HTF", tip]
+        else if mode == "Standard" and t1
+            ["1m? Try SMC for tighter entries", tip]
+        else if mode == "Standard" and t57
+            ["OPTIMAL: Standard on intraday", opt]
+        else if mode == "Standard" and tHTF
+            ["Good for HTF swings", good]
+        else if mode == "Custom"
+            ["Custom - You're in control", good]
+        else
+            ["Configuration looks good", good]
+
+[modeAdvice, adviceColor] = getModeAdvice(assetType, mode, tfTier, sessionPreset)
+
+
+// ─── 6. ORB & STRUCTURE ───
+bool _orbEnabledInput = input.bool(true, "ORB System", group=grpStr, tooltip="Custom mode only")
+bool orbEnabled = mode == "SMC" ? false : (mode == "Custom" ? _orbEnabledInput : true)
+bool showSMCVisuals = (mode == "SMC" or mode == "Custom")
+bool showORBVisuals = orbEnabled
+
+int orbHoldBars = input.int(15, "ORB Hold Bars", group=grpStr)
+bool _blockCounterTrend = input.bool(true, "Block Counter-Trend", group=grpStr, tooltip="No shorts during bullish ORB")
+bool finalBlockCT = mode == "SMC" ? false : (mode == "Custom" ? _blockCounterTrend : true)
+bool showORBLines = input.bool(true, "Show ORB Lines", group=grpStr)
+float orbRetestTol = input.float(30.0, "Retest Tol %", step=0.5, group=grpStr)
+int maxBarsRetest = input.int(25, "Retest Bars", group=grpStr)
+int maxBarsFakeout = input.int(15, "Fakeout Bars", group=grpStr)
+
+bool showRails = input.bool(true, "Rails", group=grpStr)
+float railExt1 = input.float(1.618, "  E1", step=0.01, group=grpStr)
+float railExt2 = input.float(2.618, "  E2", step=0.01, group=grpStr)
+float railExt3 = input.float(4.236, "  E3", step=0.01, group=grpStr)
+
+bool showInstZones = input.bool(true, "Inst. Zones", group=grpStr)
+int maxInstLevels = input.int(20, "  Max Levels", group=grpStr)
+int pivotLeft = input.int(10, "Pivot Left", group=grpStr)
+int pivotRight = input.int(3, "Pivot Right", group=grpStr)
+color supplyColor = input.color(color.new(#FF5252, 90), "Supply Color", group=grpStr)
+color demandColor = input.color(color.new(#00BFA5, 90), "Demand Color", group=grpStr)
+
+bool showHTFPivots = input.bool(true, "HTF Pivots", group=grpStr)
+string htfTimeframe = input.string("D", "  TF", options=["D","W","M"], group=grpStr)
+color htfPivotColor = input.color(color.yellow, "  Color", group=grpStr)
+
+bool showMagnets = input.bool(true, "Magnets", group=grpStr)
+float magnetThreshold = input.float(25, "  Thresh", group=grpStr)
+bool enableSnapback = input.bool(true, "Snapback", group=grpStr)
+float shockBarMult = input.float(2.5, "  Shock Mult", step=0.1, group=grpStr)
+float snapPct = input.float(50.0, "  Snap %", step=5.0, group=grpStr)
+bool showSRLines = input.bool(false, "Dynamic S&R", group=grpStr)
+int srLen = input.int(20, "  Len", group=grpStr)
+float srProximity = input.float(1.5, "  Prox", minval=0.1, step=0.1, group=grpStr)
+bool enableReversalSeq = input.bool(true, "Reversal Detection", group=grpStr)
+int exitClusterLookback = input.int(10, "  Lookback", group=grpStr)
+
+// ─── 7. CHART & ALERTS ───
+bool showDashboard = input.bool(true, "Dashboard", group=grpVis)
+bool showWatermark = input.bool(true, "Watermark", group=grpVis)
+bool showSignals = input.bool(true, "Signals", group=grpVis)
+bool showTPSL = input.bool(true, "TP/SL Lines", group=grpVis)
+bool showMomentumBars = input.bool(true, "Momentum Bars", group=grpVis)
+bool minimalSMCLabels = input.bool(true, "Minimal SMC Labels", group=grpVis)
+bool minimalTPSL = input.bool(true, "Minimal TP/SL", group=grpVis)
+bool drawMAs = input.bool(true, "MAs", group=grpVis)
+bool showRibbon = input.bool(true, "Ribbon", group=grpVis)
+bool fillBackground = input.bool(true, "Backfill", group=grpVis)
+int cleanupBars = input.int(10, "Cleanup Bars", group=grpVis)
+color bullishCol = input.color(color.green, "Bull Color", group=grpVis)
+color bearishCol = input.color(color.red, "Bear Color", group=grpVis)
+color neutralCol = input.color(color.gray, "Neutral Color", group=grpVis)
+bool alertZoneProximity = input.bool(true, "Alert: Zone Proximity", group=grpVis, tooltip="When price within 5% of high-value OB/FVG")
+bool alertTrendShift = input.bool(true, "Alert: HTF Trend Shift", group=grpVis)
+
+// PREMIUM COLORS (Hardcoded)
+color colBullPremium  = #00BFA5   // Teal
+color colBearPremium  = #FF5252   // Coral
+color colAmber        = #FFA726   // Amber
+color colSlate        = #78909C   // Blue-gray
+color colDeepPurple   = #7B68EE   // Medium Slate Blue
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ TREND ALIGNMENT ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// --- Trend Alignment ---
+bool fastUp = fastMA > fastMA[3]
+bool fastDn = fastMA < fastMA[3]
+bool slowUp = slowMA > slowMA[3]
+bool slowDn = slowMA < slowMA[3]
+
+bool bullAlign = fastMA > slowMA and fastUp and slowUp
+bool bearAlign = fastMA < slowMA and fastDn and slowDn
+
+// --- Consolidation Detection ---
+float maDistPct = (math.abs(fastMA - slowMA) / close) * 100
+float rangeHi = ta.highest(high, rangeBarCount)
+float rangeLo = ta.lowest(low, rangeBarCount)
+float rangeMovePct = ((rangeHi - rangeLo) / rangeLo) * 100
+
+bool isChop = maDistPct < consolEMAPct or rangeMovePct < consolMaxMovePct
+
+// --- Pullback Detection ---
+bool pullbackLong = bullAlign and close < fastMA and close > slowMA
+bool pullbackShort = bearAlign and close > fastMA and close < slowMA
+
+// --- Volume & Momentum ---
+float avgVol = ta.sma(volume, volumePeriod)
+bool volConfirm = volume > avgVol
+
+float bodySize = math.abs(close - open)
+float avgBody = ta.sma(bodySize, 3)
+bool strongBody = bodySize > avgBody * finalMomMult
+
+bool breakPrevHigh = close > high[1]
+bool breakPrevLow = close < low[1]
+
+// --- Market State ---
+string mktState = isChop ? "CONSOLIDATION" : bullAlign ? "BULLISH" : bearAlign ? "BEARISH" : "NEUTRAL"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ SMC CONFLUENCE LOGIC ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Candle Patterns
+float body = math.abs(close - open)
+float fullRange = high - low
+float upperWick = close > open ? high - close : high - open
+float lowerWick = close > open ? open - low : close - low
+
+bool isBullEngulfing = close > open and close[1] < open[1] and close > open[1] and open < close[1] and body > body[1] * 1.2
+bool isBearEngulfing = close < open and close[1] > open[1] and close < open[1] and open > close[1] and body > body[1] * 1.2
+
+bool isBullPinBar = close > open and lowerWick > body * 2 and upperWick < body * 0.5 and lowerWick > atrVal * 0.3
+bool isBearPinBar = close < open and upperWick > body * 2 and lowerWick < body * 0.5 and upperWick > atrVal * 0.3
+
+bool isBullRejection = lowerWick > body * 3 and lowerWick > atrVal * 0.5 and close > (high + low)/2
+bool isBearRejection = upperWick > body * 3 and upperWick > atrVal * 0.5 and close < (high + low)/2
+
+bool isBullMarubozu = close > open and (fullRange > 0 ? (body / fullRange * 100) : 0) > 80 and body > atrVal * 0.5
+bool isBearMarubozu = close < open and (fullRange > 0 ? (body / fullRange * 100) : 0) > 80 and body > atrVal * 0.5
+
+bool isMorningStar = close[2] < open[2] and math.abs(close[1] - open[1]) < body[2] * 0.3 and close > open and close > (open[2] + close[2])/2
+bool isEveningStar = close[2] > open[2] and math.abs(close[1] - open[1]) < body[2] * 0.3 and close < open and close < (open[2] + close[2])/2
+
+var string currentPattern = ""
+var int patternScore = 0
+
+if isBullEngulfing or isMorningStar
+    currentPattern := isBullEngulfing ? "ENGULFING" : "MORNING STAR"
+    patternScore := 5
+else if isBearEngulfing or isEveningStar
+    currentPattern := isBearEngulfing ? "ENGULFING" : "EVENING STAR"
+    patternScore := 5
+else if isBullPinBar or isBullRejection
+    currentPattern := isBullPinBar ? "PIN BAR" : "REJECTION"
+    patternScore := 4
+else if isBearPinBar or isBearRejection
+    currentPattern := isBearPinBar ? "PIN BAR" : "REJECTION"
+    patternScore := 4
+else if isBullMarubozu
+    currentPattern := "MARUBOZU"
+    patternScore := 3
+else if isBearMarubozu
+    currentPattern := "MARUBOZU"
+    patternScore := 3
+else
+    currentPattern := ""
+    patternScore := 0
+
+bool bullPattern = (isBullEngulfing or isBullPinBar or isBullRejection or isBullMarubozu or isMorningStar) and patternScore >= finalMinScoreAdaptive
+bool bearPattern = (isBearEngulfing or isBearPinBar or isBearRejection or isBearMarubozu or isEveningStar) and patternScore >= finalMinScoreAdaptive
+
+// Order Blocks - Clean price-tracking logic
+var float[] bullOBTops = array.new_float()
+var float[] bullOBBots = array.new_float()
+var float[] bearOBTops = array.new_float()
+var float[] bearOBBots = array.new_float()
+
+// Track creation index for OBs (for age-out)
+var int[] bullOBIndex = array.new_int()
+var int[] bearOBIndex = array.new_int()
+
+// Fair Value Gaps (FVG) arrays
+var box[] bullFVGs = array.new_box()
+var float[] bullFVGBots = array.new_float()
+var box[] bearFVGs = array.new_box()
+var float[] bearFVGTops = array.new_float()
+
+int swingLenOB = 10
+float shOB = ta.pivothigh(high, swingLenOB, swingLenOB)
+float slOB = ta.pivotlow(low, swingLenOB, swingLenOB)
+
+// Calculate cross conditions globally for consistency
+bool obCrossUnderSL = ta.crossunder(close, slOB[1])
+bool obCrossOverSH = ta.crossover(close, shOB[1])
+
+if not na(shOB)
+    // Bearish OB: Look for last bullish candle followed by displacement
+    for i = 1 to 15
+        if close[i] > open[i] and high[i] >= shOB
+            bool hasDisplacement = false
+            for j = 1 to 3
+                if close[i-j] < open[i-j] and math.abs(close[i-j]-open[i-j]) > atrVal * 0.4
+                    hasDisplacement := true
+            if hasDisplacement
+                array.push(bearOBTops, math.max(open[i], close[i])) // Body Only (Cleaner)
+                array.push(bearOBBots, math.min(open[i], close[i]))
+                array.push(bearOBIndex, bar_index - i) // Track creation bar
+                break
+
+if not na(slOB)
+    // Bullish OB
+    for i = 1 to 15
+        if close[i] < open[i] and low[i] <= slOB
+            bool hasDisplacement = false
+            for j = 1 to 3
+                if close[i-j] > open[i-j] and math.abs(close[i-j]-open[i-j]) > atrVal * 0.4
+                    hasDisplacement := true
+            if hasDisplacement
+                array.push(bullOBTops, math.max(open[i], close[i])) // Body Only (Cleaner)
+                array.push(bullOBBots, math.min(open[i], close[i]))
+                array.push(bullOBIndex, bar_index - i) // Track creation bar
+                break
+
+// ── AGE-OUT FOR SMC ZONES (OB + FVG)
+
+// Max age in bars (tighter = faster expiry)
+int obMaxAgeBars = 120
+int fvgMaxAgeBars = 180
+int maxOBZones = 12   // cap active OB zones (memory + performance)
+int maxFVGZones = 15  // cap active FVG zones
+
+// Age-out OBs
+if array.size(bullOBIndex) > 0
+    for i = array.size(bullOBIndex) - 1 to 0
+        if bar_index - array.get(bullOBIndex, i) > obMaxAgeBars
+            array.remove(bullOBTops, i)
+            array.remove(bullOBBots, i)
+            array.remove(bullOBIndex, i)
+
+if array.size(bearOBIndex) > 0
+    for i = array.size(bearOBIndex) - 1 to 0
+        if bar_index - array.get(bearOBIndex, i) > obMaxAgeBars
+            array.remove(bearOBTops, i)
+            array.remove(bearOBBots, i)
+            array.remove(bearOBIndex, i)
+
+// Cap OB array size (prevent memory bloat on long backtests)
+if array.size(bullOBIndex) > maxOBZones
+    array.shift(bullOBTops)
+    array.shift(bullOBBots)
+    array.shift(bullOBIndex)
+if array.size(bearOBIndex) > maxOBZones
+    array.shift(bearOBTops)
+    array.shift(bearOBBots)
+    array.shift(bearOBIndex)
+
+// FVG age-out (tighter 180-bar cleanup)
+if array.size(bullFVGs) > 0
+    for i = array.size(bullFVGs) - 1 to 0
+        if bar_index - box.get_left(array.get(bullFVGs, i)) > fvgMaxAgeBars
+            box.delete(array.get(bullFVGs, i))
+            array.remove(bullFVGs, i)
+            array.remove(bullFVGBots, i)
+
+if array.size(bearFVGs) > 0
+    for i = array.size(bearFVGs) - 1 to 0
+        if bar_index - box.get_left(array.get(bearFVGs, i)) > fvgMaxAgeBars
+            box.delete(array.get(bearFVGs, i))
+            array.remove(bearFVGs, i)
+            array.remove(bearFVGTops, i)
+
+// Cap FVG array size (safety net for long backtests)
+if array.size(bullFVGs) > maxFVGZones
+    box.delete(array.shift(bullFVGs))
+    array.shift(bullFVGBots)
+
+if array.size(bearFVGs) > maxFVGZones
+    box.delete(array.shift(bearFVGs))
+    array.shift(bearFVGTops)
+
+// --- Mitigation Filter: Remove if Price Trades Through OBs ---
+if array.size(bullOBBots) > 0
+    for i = array.size(bullOBBots) - 1 to 0
+        if close < array.get(bullOBBots, i)
+            array.remove(bullOBTops, i)
+            array.remove(bullOBBots, i)
+            array.remove(bullOBIndex, i)
+
+if array.size(bearOBTops) > 0
+    for i = array.size(bearOBTops) - 1 to 0
+        if close > array.get(bearOBTops, i)
+            array.remove(bearOBTops, i)
+            array.remove(bearOBBots, i)
+            array.remove(bearOBIndex, i)
+
+// Near OB check
+bool nearBullOB = false
+bool nearBearOB = false
+
+if array.size(bullOBBots) > 0
+    float bot = array.get(bullOBBots, array.size(bullOBBots)-1)
+    float top = array.get(bullOBTops, array.size(bullOBTops)-1)
+    nearBullOB := close >= bot - atrVal*finalOBProx and close <= top + atrVal*finalOBProx
+
+if array.size(bearOBBots) > 0
+    float bot = array.get(bearOBBots, array.size(bearOBBots)-1)
+    float top = array.get(bearOBTops, array.size(bearOBTops)-1)
+    nearBearOB := close >= bot - atrVal*finalOBProx and close <= top + atrVal*finalOBProx
+
+// FVGs (Visual + Logic) - arrays declared above with OB arrays
+
+bool isBullFVG = low > high[2]
+bool isBearFVG = high < low[2]
+
+float bullFVGsize = isBullFVG ? low - high[2] : 0
+float bearFVGsize = isBearFVG ? low[2] - high : 0
+
+bool validBullFVG = isBullFVG and bullFVGsize > atrVal * (adaptiveFVG / 100)
+bool validBearFVG = isBearFVG and bearFVGsize > atrVal * (adaptiveFVG / 100)
+
+if validBullFVG
+    array.push(bullFVGBots, high[2])
+    // Draw visual FVG
+    box newBox = box.new(bar_index - 2, low, bar_index + 80, high[2], 
+     border_color=showSMCVisuals ? color.new(#00BFA5, 60) : color.new(color.gray, 100), bgcolor=showSMCVisuals ? color.new(#00BFA5, 93) : color.new(color.gray, 100), 
+     border_width=1, border_style=line.style_dashed)
+    array.push(bullFVGs, newBox)
+
+if validBearFVG
+    array.push(bearFVGTops, low[2])
+    // Draw visual FVG
+    box newBox = box.new(bar_index - 2, low[2], bar_index + 80, high, 
+     border_color=showSMCVisuals ? color.new(#FF5252, 60) : color.new(color.gray, 100), bgcolor=showSMCVisuals ? color.new(#FF5252, 93) : color.new(color.gray, 100), 
+     border_width=1, border_style=line.style_dashed)
+    array.push(bearFVGs, newBox)
+
+// Mitigation Logic - Remove mitigated FVG zones
+if array.size(bullFVGBots) > 0
+    for i = array.size(bullFVGBots) - 1 to 0
+        if close < array.get(bullFVGBots, i)
+            box.delete(array.get(bullFVGs, i))
+            array.remove(bullFVGBots, i)
+            array.remove(bullFVGs, i)
+
+if array.size(bearFVGTops) > 0
+    for i = array.size(bearFVGTops) - 1 to 0
+        if close > array.get(bearFVGTops, i)
+            box.delete(array.get(bearFVGs, i))
+            array.remove(bearFVGTops, i)
+            array.remove(bearFVGs, i)
+
+// Extend FVG boxes to current bar
+if array.size(bullFVGs) > 0
+    for i = 0 to array.size(bullFVGs) - 1
+        box.set_right(array.get(bullFVGs, i), bar_index + 5)
+if array.size(bearFVGs) > 0
+    for i = 0 to array.size(bearFVGs) - 1
+        box.set_right(array.get(bearFVGs, i), bar_index + 5)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ OPENING RANGE BREAKOUT LOGIC ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// (inORB and inSession are already defined in the TIME & SESSION section above)
+
+var float orbHigh = na
+var float orbLow = na
+var bool orbComplete = false
+var int orbBarStart = na
+var int orbDayKey = na
+
+if dayofweek != orbDayKey
+    orbHigh := na
+    orbLow := na
+    orbComplete := false
+    orbBarStart := na
+    orbDayKey := dayofweek
+
+if inORB and orbEnabled
+    orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+    orbLow := na(orbLow) ? low : math.min(orbLow, low)
+    if na(orbBarStart)
+        orbBarStart := bar_index
+    if not na(orbHigh) and not na(orbLow)
+        orbComplete := true
+
+var int orbBreakDir = 0
+var int orbBreakBar = na
+
+bool crossAboveORBHigh = ta.crossover(close, orbHigh)
+bool crossBelowORBLow = ta.crossunder(close, orbLow)
+
+if orbComplete and not inORB and orbEnabled
+    if crossAboveORBHigh and orbBreakDir == 0
+        orbBreakDir := 1
+        orbBreakBar := bar_index
+    if crossBelowORBLow and orbBreakDir == 0
+        orbBreakDir := -1
+        orbBreakBar := bar_index
+
+if dayofweek != dayofweek[1]
+    orbBreakDir := 0
+    orbBreakBar := na
+
+int barsSinceBreak = na(orbBreakBar) ? 999 : bar_index - orbBreakBar
+bool inRetestWindow = barsSinceBreak <= maxBarsRetest
+
+float retestTolAmt = (orbHigh - orbLow) * (orbRetestTol / 100)
+
+bool orbRetestLong = orbBreakDir == 1 and inRetestWindow and low <= orbHigh + retestTolAmt and low >= orbHigh - retestTolAmt
+bool orbRetestShort = orbBreakDir == -1 and inRetestWindow and high >= orbLow - retestTolAmt and high <= orbLow + retestTolAmt
+
+var float orbMid = na
+if orbComplete
+    orbMid := math.avg(orbHigh, orbLow)
+
+// Fakeout Detection
+bool inFakeoutWindow = barsSinceBreak <= maxBarsFakeout
+bool fakeoutLong = orbBreakDir == 1 and inFakeoutWindow and close < orbMid
+bool fakeoutShort = orbBreakDir == -1 and inFakeoutWindow and close > orbMid
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ANTIGRAVITY RAILS (5m) ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+color colGold = #FFD700
+color colBlue = color.blue
+color colPurple = #800080
+
+bool inRailSession = inTime(railsSession)
+var float rHigh = na
+var float rLow  = na
+var bool rDone  = false
+var line ru1 = na, var line ru2 = na, var line ru3 = na
+var line rd1 = na, var line rd2 = na, var line rd3 = na
+
+// Reset daily
+if dayofweek != dayofweek[1]
+    rHigh := na
+    rLow  := na
+    rDone := false
+    ru1 := na, ru2 := na, ru3 := na
+    rd1 := na, rd2 := na, rd3 := na
+
+// Capture 5m Range
+if inRailSession
+    rHigh := na(rHigh) ? high : math.max(rHigh, high)
+    rLow  := na(rLow) ? low : math.min(rLow, low)
+    rDone := true
+
+// Draw Rails on session close
+var label rl1u = na, var label rl2u = na, var label rl3u = na
+var label rl1d = na, var label rl2d = na, var label rl3d = na
+
+if not inRailSession and inRailSession[1] and rDone and showRails and showORBVisuals
+    float rangeVal = rHigh - rLow
+    // Bullish Targets (Gold → Amber → Orange tiers)
+    ru1 := line.new(bar_index, rHigh + (rangeVal * railExt1), bar_index+1, rHigh + (rangeVal * railExt1), color=colGold, style=line.style_dashed, width=1)
+    ru2 := line.new(bar_index, rHigh + (rangeVal * railExt2), bar_index+1, rHigh + (rangeVal * railExt2), color=colAmber, style=line.style_dashed, width=2)
+    ru3 := line.new(bar_index, rHigh + (rangeVal * railExt3), bar_index+1, rHigh + (rangeVal * railExt3), color=#FF8F00, style=line.style_dashed, width=2)
+    // Bearish Targets (Cyan → Blue → Navy tiers)
+    rd1 := line.new(bar_index, rLow - (rangeVal * railExt1), bar_index+1, rLow - (rangeVal * railExt1), color=#4FC3F7, style=line.style_dashed, width=1)
+    rd2 := line.new(bar_index, rLow - (rangeVal * railExt2), bar_index+1, rLow - (rangeVal * railExt2), color=#29B6F6, style=line.style_dashed, width=2)
+    rd3 := line.new(bar_index, rLow - (rangeVal * railExt3), bar_index+1, rLow - (rangeVal * railExt3), color=#0288D1, style=line.style_dashed, width=2)
+    // Rail Zone Labels with extension values
+    label.delete(rl1u), label.delete(rl2u), label.delete(rl3u)
+    label.delete(rl1d), label.delete(rl2d), label.delete(rl3d)
+    rl1u := label.new(bar_index + 5, rHigh + (rangeVal * railExt1), "TP1 (" + str.tostring(railExt1, "#.###") + ")", style=label.style_none, textcolor=colGold, size=size.small)
+    rl2u := label.new(bar_index + 5, rHigh + (rangeVal * railExt2), "TP2 (" + str.tostring(railExt2, "#.###") + ")", style=label.style_none, textcolor=colAmber, size=size.small)
+    rl3u := label.new(bar_index + 5, rHigh + (rangeVal * railExt3), "TP3 (" + str.tostring(railExt3, "#.###") + ")", style=label.style_none, textcolor=#FF8F00, size=size.small)
+    rl1d := label.new(bar_index + 5, rLow - (rangeVal * railExt1), "TP1 (" + str.tostring(railExt1, "#.###") + ")", style=label.style_none, textcolor=#4FC3F7, size=size.small)
+    rl2d := label.new(bar_index + 5, rLow - (rangeVal * railExt2), "TP2 (" + str.tostring(railExt2, "#.###") + ")", style=label.style_none, textcolor=#29B6F6, size=size.small)
+    rl3d := label.new(bar_index + 5, rLow - (rangeVal * railExt3), "TP3 (" + str.tostring(railExt3, "#.###") + ")", style=label.style_none, textcolor=#0288D1, size=size.small)
+
+// When ORB visuals are off (SMC mode), remove rail lines/labels so they don't persist
+if not showORBVisuals
+    if not na(ru1)
+        line.delete(ru1)
+        ru1 := na
+    if not na(ru2)
+        line.delete(ru2)
+        ru2 := na
+    if not na(ru3)
+        line.delete(ru3)
+        ru3 := na
+    if not na(rd1)
+        line.delete(rd1)
+        rd1 := na
+    if not na(rd2)
+        line.delete(rd2)
+        rd2 := na
+    if not na(rd3)
+        line.delete(rd3)
+        rd3 := na
+    if not na(rl1u)
+        label.delete(rl1u)
+        rl1u := na
+    if not na(rl2u)
+        label.delete(rl2u)
+        rl2u := na
+    if not na(rl3u)
+        label.delete(rl3u)
+        rl3u := na
+    if not na(rl1d)
+        label.delete(rl1d)
+        rl1d := na
+    if not na(rl2d)
+        label.delete(rl2d)
+        rl2d := na
+    if not na(rl3d)
+        label.delete(rl3d)
+        rl3d := na
+
+// Antigravity Logic (only extend rails when ORB visuals are on)
+if showORBVisuals and not inRailSession and rDone
+    if not na(ru1)
+        line.set_x2(ru1, bar_index + 1)
+        label.set_x(rl1u, bar_index + 3)
+        if close > line.get_y1(ru1)
+            line.delete(ru1), label.delete(rl1u)
+            ru1 := na
+    if not na(ru2)
+        line.set_x2(ru2, bar_index + 1)
+        label.set_x(rl2u, bar_index + 3)
+        if close > line.get_y1(ru2)
+            line.delete(ru2), label.delete(rl2u)
+            ru2 := na
+    if not na(ru3)
+        line.set_x2(ru3, bar_index + 1)
+        label.set_x(rl3u, bar_index + 3)
+        if close > line.get_y1(ru3)
+            line.delete(ru3), label.delete(rl3u)
+            ru3 := na
+    if not na(rd1)
+        line.set_x2(rd1, bar_index + 1)
+        label.set_x(rl1d, bar_index + 3)
+        if close < line.get_y1(rd1)
+            line.delete(rd1), label.delete(rl1d)
+            rd1 := na
+    if not na(rd2)
+        line.set_x2(rd2, bar_index + 1)
+        label.set_x(rl2d, bar_index + 3)
+        if close < line.get_y1(rd2)
+            line.delete(rd2), label.delete(rl2d)
+            rd2 := na
+    if not na(rd3)
+        line.set_x2(rd3, bar_index + 1)
+        label.set_x(rl3d, bar_index + 3)
+        if close < line.get_y1(rd3)
+            line.delete(rd3), label.delete(rl3d)
+            rd3 := na
+
+// Magnet Zones
+float distFromEMA = math.abs(close - fastMA) / syminfo.mintick
+bool isExtended = distFromEMA > magnetThreshold
+plot(showMagnets and isExtended ? fastMA : na, "Magnet Point", style=plot.style_cross, linewidth=3, color=color.fuchsia)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ORB VISUALIZATION ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+var box orbBox = na
+var line orbHighLine = na
+var line orbLowLine = na
+var line orbMidLine = na
+var label orbMidLabel = na
+bool canDrawORB = not na(orbBarStart) and (bar_index - orbBarStart) < 450 // Replaced bad var, used safe bar_index
+
+if orbComplete and not inORB and inORB[1] and showORBLines and showORBVisuals and canDrawORB
+    orbBox := box.new(orbBarStart, orbHigh, bar_index, orbLow, border_color=color.new(colDeepPurple, 30), bgcolor=color.new(colDeepPurple, 92), border_width=2)
+    orbHighLine := line.new(bar_index, orbHigh, bar_index + 100, orbHigh, color=color.new(colBullPremium, 20), style=line.style_dashed, width=2)
+    orbLowLine := line.new(bar_index, orbLow, bar_index + 100, orbLow, color=color.new(colBearPremium, 20), style=line.style_dashed, width=2)
+    orbMidLine := line.new(bar_index, orbMid, bar_index + 200, orbMid, color=color.new(colDeepPurple, 40), style=line.style_dotted, width=1)
+    orbMidLabel := label.new(bar_index + 205, orbMid, "ORB 50%", style=label.style_none, textcolor=color.new(colDeepPurple, 20), size=size.tiny)
+
+if orbComplete and not na(orbHighLine) and showORBLines and showORBVisuals
+    line.set_x2(orbHighLine, bar_index + 1)
+    line.set_x2(orbLowLine, bar_index + 1)
+    if not na(orbMidLine)
+        line.set_x2(orbMidLine, bar_index + 1)
+        label.set_x(orbMidLabel, bar_index + 5)
+
+// When ORB visuals are off (e.g. SMC mode), remove ORB box/lines so they don't persist
+if not showORBVisuals
+    if not na(orbBox)
+        box.delete(orbBox)
+        orbBox := na
+    if not na(orbHighLine)
+        line.delete(orbHighLine)
+        orbHighLine := na
+    if not na(orbLowLine)
+        line.delete(orbLowLine)
+        orbLowLine := na
+    if not na(orbMidLine)
+        line.delete(orbMidLine)
+        orbMidLine := na
+    if not na(orbMidLabel)
+        label.delete(orbMidLabel)
+        orbMidLabel := na
+
+// Removed Legacy S/D Logic - Merged with Institutional OBs below
+
+// Optional: Age-based cleanup for FVGs
+if array.size(bullFVGs) > 0
+    for i = array.size(bullFVGs) - 1 to 0
+        if bar_index - box.get_left(array.get(bullFVGs, i)) > 300
+            box.delete(array.get(bullFVGs, i))
+            array.remove(bullFVGs, i)
+            array.remove(bullFVGBots, i)
+
+if array.size(bearFVGs) > 0
+    for i = array.size(bearFVGs) - 1 to 0
+        if bar_index - box.get_left(array.get(bearFVGs, i)) > 300
+            box.delete(array.get(bearFVGs, i))
+            array.remove(bearFVGs, i)
+            array.remove(bearFVGTops, i)
+
+// Draw recent Order Blocks (persistent var boxes - no spam)
+var box bullOBBox = na
+var box bearOBBox = na
+
+// When SMC visuals are off (e.g. ORB/Standard mode), remove OB boxes so they don't persist
+if not showSMCVisuals
+    box.delete(bullOBBox)
+    box.delete(bearOBBox)
+    bullOBBox := na
+    bearOBBox := na
+
+if showSMCVisuals and smcVisuals and showInstZones
+    box.delete(bullOBBox)
+    box.delete(bearOBBox)
+    bullOBBox := na
+    bearOBBox := na
+    
+    if array.size(bullOBTops) > 0
+        float top = array.get(bullOBTops, array.size(bullOBTops)-1)
+        float bot = array.get(bullOBBots, array.size(bullOBBots)-1)
+        bullOBBox := box.new(bar_index - 25, top, bar_index + 45, bot, border_color=color.new(demandColor, 40), bgcolor=color.new(demandColor, 94), border_width=1, border_style=line.style_dashed,
+         text="DEMAND ZONE", text_color=color.new(color.white, 30), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+
+    if array.size(bearOBTops) > 0
+        float top = array.get(bearOBTops, array.size(bearOBTops)-1)
+        float bot = array.get(bearOBBots, array.size(bearOBBots)-1)
+        bearOBBox := box.new(bar_index - 25, top, bar_index + 45, bot, border_color=color.new(supplyColor, 40), bgcolor=color.new(supplyColor, 94), border_width=1, border_style=line.style_dashed,
+         text="SUPPLY ZONE", text_color=color.new(color.white, 30), text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ HIGHER-TIMEFRAME PIVOTS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+var line htfHighLine = na
+var line htfLowLine = na
+var label htfHighLabel = na
+var label htfLowLabel = na
+
+float htfHigh = request.security(syminfo.tickerid, htfTimeframe, high[1], lookahead=barmerge.lookahead_on)
+float htfLow = request.security(syminfo.tickerid, htfTimeframe, low[1], lookahead=barmerge.lookahead_on)
+
+if showHTFPivots and barstate.islast
+    line.delete(htfHighLine)
+    line.delete(htfLowLine)
+    label.delete(htfHighLabel)
+    label.delete(htfLowLabel)
+    
+    htfHighLine := line.new(bar_index - 50, htfHigh, bar_index + 10, htfHigh, color=htfPivotColor, style=line.style_solid, width=2)
+    htfLowLine := line.new(bar_index - 50, htfLow, bar_index + 10, htfLow, color=htfPivotColor, style=line.style_solid, width=2)
+    
+    string htfLabel = htfTimeframe == "D" ? "Daily" : htfTimeframe == "W" ? "Weekly" : "Monthly"
+    htfHighLabel := label.new(bar_index + 12, htfHigh, htfLabel + " High", style=label.style_none, textcolor=htfPivotColor, size=size.small)
+    htfLowLabel := label.new(bar_index + 12, htfLow, htfLabel + " Low", style=label.style_none, textcolor=htfPivotColor, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ DYNAMIC S&R LINES ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+var line[] resLines = array.new_line()
+var line[] supLines = array.new_line()
+
+float srPivHi = ta.pivothigh(high, srLen, srLen)
+float srPivLo = ta.pivotlow(low, srLen, srLen)
+
+bool isTooCloseHi = false
+if not na(srPivHi) and array.size(resLines) > 0
+    for i = 0 to array.size(resLines) - 1
+        if math.abs(line.get_y1(array.get(resLines, i)) - srPivHi) < atrVal * srProximity
+            isTooCloseHi := true
+            break
+
+bool isTooCloseLo = false
+if not na(srPivLo) and array.size(supLines) > 0
+    for i = 0 to array.size(supLines) - 1
+        if math.abs(line.get_y1(array.get(supLines, i)) - srPivLo) < atrVal * srProximity
+            isTooCloseLo := true
+            break
+
+if not na(srPivHi) and showSRLines and not isTooCloseHi
+    line l = line.new(bar_index[srLen], srPivHi, bar_index, srPivHi, color=color.new(colBearPremium, 50), style=line.style_dashed)
+    array.push(resLines, l)
+    label.new(bar_index + 3, srPivHi, str.tostring(srPivHi, format.mintick), 
+     style=label.style_none, textcolor=color.new(colBearPremium, 50), size=size.tiny)
+    if array.size(resLines) > 5
+        line.delete(array.shift(resLines))
+
+if not na(srPivLo) and showSRLines and not isTooCloseLo
+    line l = line.new(bar_index[srLen], srPivLo, bar_index, srPivLo, color=color.new(colBullPremium, 50), style=line.style_dashed)
+    array.push(supLines, l)
+    label.new(bar_index + 3, srPivLo, str.tostring(srPivLo, format.mintick), 
+     style=label.style_none, textcolor=color.new(colBullPremium, 50), size=size.tiny)
+    if array.size(supLines) > 5
+        line.delete(array.shift(supLines))
+
+// Extend & Check Breaks
+if array.size(resLines) > 0
+    for i = array.size(resLines) - 1 to 0
+        line l = array.get(resLines, i)
+        float level = line.get_y1(l)
+        if high > level // Break
+            line.delete(l)
+            array.remove(resLines, i)
+        else
+            line.set_x2(l, bar_index + 3)
+
+if array.size(supLines) > 0
+    for i = array.size(supLines) - 1 to 0
+        line l = array.get(supLines, i)
+        float level = line.get_y1(l)
+        if low < level // Break
+            line.delete(l)
+            array.remove(supLines, i)
+        else
+            line.set_x2(l, bar_index + 3)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ REVERSAL SEQUENCING ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+var string reversalPhase = "NONE"
+var int reversalDirection = 0
+var int reversalPhaseBar = na
+
+// Structure break detection
+bool structureBreakBull = bearAlign[1] and close > ta.highest(high, exitClusterLookback)[1]
+bool structureBreakBear = bullAlign[1] and close < ta.lowest(low, exitClusterLookback)[1]
+
+if enableReversalSeq
+    if structureBreakBull
+        reversalPhase := "STRUCTURE BROKEN"
+        reversalDirection := 1
+        reversalPhaseBar := bar_index
+    if structureBreakBear
+        reversalPhase := "STRUCTURE BROKEN"
+        reversalDirection := -1
+        reversalPhaseBar := bar_index
+    
+    if reversalPhase == "STRUCTURE BROKEN" and bar_index > reversalPhaseBar + 1
+        if (reversalDirection == 1 and pullbackLong) or (reversalDirection == -1 and pullbackShort)
+            reversalPhase := "RETEST IN PROGRESS"
+            reversalPhaseBar := bar_index
+    
+    if reversalPhase == "RETEST IN PROGRESS" and bar_index > reversalPhaseBar + 1
+        if (reversalDirection == 1 and close > fastMA) or (reversalDirection == -1 and close < fastMA)
+            reversalPhase := "EARLY REVERSAL"
+            reversalPhaseBar := bar_index
+    
+    if reversalPhase == "EARLY REVERSAL" and bar_index > reversalPhaseBar + 1
+        if (reversalDirection == 1 and bullAlign) or (reversalDirection == -1 and bearAlign)
+            reversalPhase := "REVERSAL CONFIRMED"
+            reversalPhaseBar := bar_index
+    
+    // Reset if reversal fails
+    if reversalPhase != "NONE" and bar_index > reversalPhaseBar + 30
+        reversalPhase := "NONE"
+        reversalDirection := 0
+
+// Reversal Phase Transition Labels
+var string prevRevPhase = "NONE"
+if enableReversalSeq and reversalPhase != prevRevPhase and reversalPhase != "NONE"
+    string revIcon = reversalPhase == "STRUCTURE BROKEN" ? "🔀 BOS" :
+     reversalPhase == "RETEST IN PROGRESS" ? "🔄 RETEST" :
+     reversalPhase == "EARLY REVERSAL" ? "⚡ EARLY REV" : "✅ CONFIRMED"
+    color revLblCol = reversalPhase == "REVERSAL CONFIRMED" ? color.new(colBullPremium, 0) : color.new(colAmber, 0)
+    if reversalDirection == 1
+        label.new(bar_index, low - atrVal * 0.3, revIcon, style=label.style_label_up, color=revLblCol, textcolor=color.white, size=size.tiny)
+    else
+        label.new(bar_index, high + atrVal * 0.3, revIcon, style=label.style_label_down, color=revLblCol, textcolor=color.white, size=size.tiny)
+prevRevPhase := reversalPhase
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ SNAPBACK ALERTS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+float barRange = high - low
+bool isShockBar = barRange > atrVal * shockBarMult and volume > avgVol * 2
+
+var float shockHigh = na
+var float shockLow = na
+var bool shockActive = false
+
+if isShockBar and enableSnapback
+    shockHigh := high
+    shockLow := low
+    shockActive := true
+
+float snapReclaimAmt = na(shockHigh) ? na : (shockHigh - shockLow) * (snapPct / 100)
+bool snapbackBull = shockActive and close > shockLow + snapReclaimAmt and close[1] <= shockLow + snapReclaimAmt
+bool snapbackBear = shockActive and close < shockHigh - snapReclaimAmt and close[1] >= shockHigh - snapReclaimAmt
+
+if snapbackBull or snapbackBear
+    shockActive := false
+
+// Snapback Visual Markers
+plotshape(enableSnapback and snapbackBull, "Snapback Bull", shape.diamond, location.belowbar, colBullPremium, size=size.small)
+plotshape(enableSnapback and snapbackBear, "Snapback Bear", shape.diamond, location.abovebar, colBearPremium, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ENTRY SIGNAL LOGIC (HYBRID) ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+bool longBase = bullAlign and not isChop and close > fastMA and volConfirm and strongBody
+bool shortBase = bearAlign and not isChop and close < fastMA and volConfirm and strongBody
+
+bool longMomo = bullAlign and close > fastMA and strongBody and breakPrevHigh and not isChop
+bool shortMomo = bearAlign and close < fastMA and strongBody and breakPrevLow and not isChop
+
+bool longPullbackEntry = pullbackLong[1] and close > fastMA and not isChop
+bool shortPullbackEntry = pullbackShort[1] and close < fastMA and not isChop
+
+bool longRetestEntry = orbRetestLong and bullAlign and not isChop
+bool shortRetestEntry = orbRetestShort and bearAlign and not isChop
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ GLOBAL TRADE FILTERS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+bool atrTooLow = disableLowAtr and atrPct < atrPctMin
+bool timeBlocked = (useLunchFilter and lunchNow) or (useNewsFilter and newsNow)
+
+// Circuit breaker: stop trading for the day after % equity loss
+var float dayStartEquity = na
+var bool circuitBreaker = false
+if dayofweek != dayofweek[1]
+    dayStartEquity := strategy.equity
+    circuitBreaker := false
+if useCircuitBreaker and not na(dayStartEquity) and dayStartEquity > 0
+    if (dayStartEquity - strategy.equity) / dayStartEquity >= circuitBreakerPct / 100
+        circuitBreaker := true
+
+bool canTradeGlobal = not atrTooLow and not timeBlocked and inSession and not circuitBreaker
+
+// HTF Trend + MTF RSI Filter Gates
+bool trendFilterLong = (not useHTFTrend or htfBull) and (not useMTFRSI or htfRSI < htfRsiOB)
+bool trendFilterShort = (not useHTFTrend or htfBear) and (not useMTFRSI or htfRSI > htfRsiOS)
+
+bool longSignalBase = (longBase or longMomo or longPullbackEntry or longRetestEntry) and showSignals and canTradeGlobal
+bool shortSignalBase = (shortBase or shortMomo or shortPullbackEntry or shortRetestEntry) and showSignals and canTradeGlobal
+
+if finalBlockCT and orbEnabled and orbComplete and barsSinceBreak <= orbHoldBars
+    if orbBreakDir == 1
+        shortSignalBase := false
+    if orbBreakDir == -1
+        longSignalBase := false
+
+if isChop
+    longSignalBase := false
+    shortSignalBase := false
+
+// Liquidity sweep: price took out prior low/high then reversed (adds confluence)
+int sweepLookback = 10
+float priorLow = ta.lowest(low, sweepLookback)[1]
+float priorHigh = ta.highest(high, sweepLookback)[1]
+bool sweepBull = low < priorLow and close > open and close > high[1]
+bool sweepBear = high > priorHigh and close < open and close < low[1]
+
+// SMC Confluence Filter Logic (2 of 3 + RSI extreme; liquidity sweep counts as +1)
+int smcLongCount = (nearBullOB ? 1 : 0) + (validBullFVG ? 1 : 0) + (bullPattern ? 1 : 0) + (sweepBull ? 1 : 0)
+int smcShortCount = (nearBearOB ? 1 : 0) + (validBearFVG ? 1 : 0) + (bearPattern ? 1 : 0) + (sweepBear ? 1 : 0)
+bool rsiExtremeLong = ta.lowest(rsiVal, 5) <= rsiOS
+bool rsiExtremeShort = ta.highest(rsiVal, 5) >= rsiOB
+
+bool smcLongOk  = smcLongCount >= 2 and rsiExtremeLong
+bool smcShortOk = smcShortCount >= 2 and rsiExtremeShort
+
+// Filtered Signals with Anti-Spam Cooldown + HTF Trend Gates
+var int lastLongBar = na
+var int lastShortBar = na
+int cooldownBars = adaptiveCooldown
+
+bool longSignal = canTradeGlobal and trendFilterLong and ((mode == "SMC" and smcLongOk) or (longSignalBase and (not requireSMC or smcLongOk)))
+bool shortSignal = canTradeGlobal and trendFilterShort and ((mode == "SMC" and smcShortOk) or (shortSignalBase and (not requireSMC or smcShortOk)))
+
+// Apply cooldown to prevent signal spam
+if longSignal and not na(lastLongBar) and bar_index - lastLongBar < cooldownBars
+    longSignal := false
+
+if shortSignal and not na(lastShortBar) and bar_index - lastShortBar < cooldownBars
+    shortSignal := false
+
+if longSignal
+    lastLongBar := bar_index
+
+if shortSignal
+    lastShortBar := bar_index
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ TARGET & STOP CALCULATION ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+var float longTarget = na
+var float longStop = na
+var float shortTarget = na
+var float shortStop = na
+
+if longSignal
+    longStop := close - atrVal * finalStopFact
+    longTarget := close + atrVal * adaptiveRR
+    shortTarget := na
+    shortStop := na
+
+if shortSignal
+    shortStop := close + atrVal * finalStopFact
+    shortTarget := close - atrVal * adaptiveRR
+    longTarget := na
+    longStop := na
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ STRATEGY EXECUTION ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+if longSignal
+    strategy.entry("Long", strategy.long, comment="L")
+if shortSignal
+    strategy.entry("Short", strategy.short, comment="S")
+
+bool inLong = strategy.position_size > 0
+bool inShort = strategy.position_size < 0
+// Breakeven: move SL to entry after X% of target reached (exit updated every bar)
+float effLongStop = inLong and useBreakeven and not na(longTarget) and high >= strategy.position_avg_price + (longTarget - strategy.position_avg_price) * breakevenPct / 100 ? strategy.position_avg_price : longStop
+float effShortStop = inShort and useBreakeven and not na(shortTarget) and low <= strategy.position_avg_price - (strategy.position_avg_price - shortTarget) * breakevenPct / 100 ? strategy.position_avg_price : shortStop
+if inLong
+    strategy.exit("Exit Long", "Long", limit=longTarget, stop=effLongStop, comment_profit="TP", comment_loss="SL")
+if inShort
+    strategy.exit("Exit Short", "Short", limit=shortTarget, stop=effShortStop, comment_profit="TP", comment_loss="SL")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ VISUALIZATION ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Premium MA Plots with Trend Ribbon
+p1 = plot(drawMAs ? fastMA : na, "Fast MA", color=color.new(colBullPremium, 20), linewidth=2)
+p2 = plot(drawMAs ? slowMA : na, "Slow MA", color=color.new(colAmber, 20), linewidth=2)
+color ribbonColor = not showRibbon ? color.new(color.white, 100) : bullAlign ? color.new(colBullPremium, 88) : bearAlign ? color.new(colBearPremium, 88) : color.new(color.gray, 95)
+fill(p1, p2, color=ribbonColor, title="Trend Ribbon")
+
+// Subtle Background
+color pullbackBg = color.new(colDeepPurple, 92)
+color chopBg = color.new(colSlate, 93)
+color bgCol = isChop ? chopBg : 
+ (bullAlign and close < fastMA) or (bearAlign and close > fastMA) ? pullbackBg :
+ bullAlign ? color.new(colBullPremium, 96) : 
+ bearAlign ? color.new(colBearPremium, 96) : 
+ color.new(neutralCol, 97)
+
+bgcolor(fillBackground ? bgCol : na, title="Trend Background")
+
+// Momentum Bar Coloring
+color momentumBarCol = na
+if showMomentumBars
+    if isChop
+        momentumBarCol := color.new(colSlate, 20)
+    else if bullAlign and strongBody and volConfirm
+        momentumBarCol := colBullPremium
+    else if pullbackLong
+        momentumBarCol := colAmber
+    else if bullAlign
+        momentumBarCol := color.new(colBullPremium, 40)
+    else if bearAlign and strongBody and volConfirm
+        momentumBarCol := colBearPremium
+    else if pullbackShort
+        momentumBarCol := colAmber
+    else if bearAlign
+        momentumBarCol := color.new(colBearPremium, 40)
+barcolor(momentumBarCol)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ENTRY SIGNAL LABELS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Entry type detection
+string longType = longRetestEntry ? "ORB RETEST" : longPullbackEntry ? "PULLBACK" : longMomo ? "MOMENTUM" : "TREND"
+string shortType = shortRetestEntry ? "ORB RETEST" : shortPullbackEntry ? "PULLBACK" : shortMomo ? "MOMENTUM" : "TREND"
+string longIcon = longType == "ORB RETEST" ? "🎯" : longType == "PULLBACK" ? "🔄" : longType == "MOMENTUM" ? "⚡" : "📈"
+string shortIcon = shortType == "ORB RETEST" ? "🎯" : shortType == "PULLBACK" ? "🔄" : shortType == "MOMENTUM" ? "⚡" : "📉"
+
+// inLong / inShort defined in Strategy Execution block above
+
+if longSignal
+    label.new(bar_index, low, longIcon + " LONG\n" + longType, style=label.style_label_up, color=colBullPremium, textcolor=color.white, size=size.normal)
+    if showSMCVisuals and requireSMC and smcLongOk and not minimalSMCLabels
+        label.new(bar_index, low - atrVal*0.5, "SMC ✓", style=label.style_label_up, color=color.new(color.lime, 0), textcolor=color.white, size=size.small)
+    // TP/SL Lines (minimal mode: only when in position)
+    if showTPSL and (not minimalTPSL or inLong)
+        line.new(bar_index, longTarget, bar_index + cleanupBars, longTarget, color=color.new(colBullPremium, 30), style=line.style_dashed, width=1)
+        line.new(bar_index, longStop, bar_index + cleanupBars, longStop, color=color.new(colBearPremium, 30), style=line.style_dashed, width=1)
+        label.new(bar_index + cleanupBars, longTarget, "TP", style=label.style_none, textcolor=color.new(colBullPremium, 20), size=size.tiny)
+        label.new(bar_index + cleanupBars, longStop, "SL", style=label.style_none, textcolor=color.new(colBearPremium, 20), size=size.tiny)
+
+if shortSignal
+    label.new(bar_index, high, shortIcon + " SHORT\n" + shortType, style=label.style_label_down, color=colBearPremium, textcolor=color.white, size=size.normal)
+    if showSMCVisuals and requireSMC and smcShortOk and not minimalSMCLabels
+        label.new(bar_index, high + atrVal*0.5, "SMC ✓", style=label.style_label_down, color=color.new(color.lime, 0), textcolor=color.white, size=size.small)
+    // TP/SL Lines (minimal mode: only when in position)
+    if showTPSL and (not minimalTPSL or inShort)
+        line.new(bar_index, shortTarget, bar_index + cleanupBars, shortTarget, color=color.new(colBullPremium, 30), style=line.style_dashed, width=1)
+        line.new(bar_index, shortStop, bar_index + cleanupBars, shortStop, color=color.new(colBearPremium, 30), style=line.style_dashed, width=1)
+        label.new(bar_index + cleanupBars, shortTarget, "TP", style=label.style_none, textcolor=color.new(colBullPremium, 20), size=size.tiny)
+        label.new(bar_index + cleanupBars, shortStop, "SL", style=label.style_none, textcolor=color.new(colBearPremium, 20), size=size.tiny)
+
+// SMC Missing Labels
+if showSMCVisuals and requireSMC and longSignalBase and not longSignal
+    label.new(bar_index, low - atrVal*0.8, "SMC missing", style=label.style_label_up, color=color.new(colAmber, 60), size=size.tiny)
+
+if showSMCVisuals and requireSMC and shortSignalBase and not shortSignal
+    label.new(bar_index, high + atrVal*0.8, "SMC missing", style=label.style_label_down, color=color.new(colAmber, 60), size=size.tiny)
+
+// EMA Retest labels
+if pullbackLong and not pullbackLong[1]
+    label.new(bar_index, low, "🔄 EMA Retest", style=label.style_label_up, color=color.new(colAmber, 30), textcolor=color.white, size=size.small)
+
+if pullbackShort and not pullbackShort[1]
+    label.new(bar_index, high, "🔄 EMA Retest", style=label.style_label_down, color=color.new(colAmber, 30), textcolor=color.white, size=size.small)
+
+// ORB retest labels
+if orbRetestLong and showSignals and showORBVisuals
+    label.new(bar_index, low, "🎯 ORB RETEST", style=label.style_label_up, color=color.new(colDeepPurple, 20), textcolor=color.white, size=size.small)
+
+if orbRetestShort and showSignals and showORBVisuals
+    label.new(bar_index, high, "🎯 ORB RETEST", style=label.style_label_down, color=color.new(colDeepPurple, 20), textcolor=color.white, size=size.small)
+
+// Consolidation warning
+if isChop and not isChop[1]
+    label.new(bar_index, high, "⏸ CHOP", style=label.style_label_down, color=colSlate, textcolor=color.white, size=size.small)
+
+// Fakeout labels
+if fakeoutLong and not fakeoutLong[1] and showSignals
+    label.new(bar_index, high + atrVal * 0.3, "⚠ FAKEOUT", style=label.style_label_down, color=color.new(colAmber, 20), textcolor=color.white, size=size.tiny)
+
+if fakeoutShort and not fakeoutShort[1] and showSignals
+    label.new(bar_index, low - atrVal * 0.3, "⚠ FAKEOUT", style=label.style_label_up, color=color.new(colAmber, 20), textcolor=color.white, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ DASHBOARD ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Premium Dashboard Theme
+color dashBg    = color.new(#0D1117, 10)
+color dashRowA  = color.new(#0D1117, 5)
+color dashRowB  = color.new(#161B22, 5)
+color dashLabel = color.new(#8B949E, 0)
+
+var table dash = table.new(position.top_right, 2, 15, 
+ bgcolor=dashBg, border_width=1, border_color=color.new(#30363D, 0))
+
+if barstate.islast and showDashboard
+    // Header - Teal accent
+    table.cell(dash, 0, 0, "RetailBeastFX – BeastPulse (" + mode + ")", text_color=color.white, 
+     text_size=size.normal, bgcolor=color.new(colBullPremium, 20))
+    table.merge_cells(dash, 0, 0, 1, 0)
+    
+    // Row 1: Market State
+    color stCol = isChop ? colSlate : bullAlign ? colBullPremium : bearAlign ? colBearPremium : colSlate
+    string stIcon = isChop ? "⏸" : bullAlign ? "🟢" : bearAlign ? "🔴" : "⚪"
+    table.cell(dash, 0, 1, "Market", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 1, stIcon + " " + mktState, text_color=stCol, text_size=size.small, bgcolor=dashRowA)
+    
+    // Row 2: Trend
+    string trendTxt = bullAlign ? "BULLISH ↑" : bearAlign ? "BEARISH ↓" : "NEUTRAL →"
+    color trendCol = bullAlign ? colBullPremium : bearAlign ? colBearPremium : colSlate
+    table.cell(dash, 0, 2, "Trend", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 2, trendTxt, text_color=trendCol, text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 3: RSI
+    color rsiCol = rsiVal > rsiOB ? colBearPremium : rsiVal < rsiOS ? colBullPremium : colSlate
+    string rsiLabel = rsiVal > rsiOB ? "OB" : rsiVal < rsiOS ? "OS" : "NEUTRAL"
+    table.cell(dash, 0, 3, "RSI", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 3, str.tostring(rsiVal, "#.0") + " (" + rsiLabel + ")", text_color=rsiCol, text_size=size.small, bgcolor=dashRowA)
+    
+    // Row 4: ATR (NEW)
+    table.cell(dash, 0, 4, "ATR", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 4, str.tostring(atrVal, "#.00"), text_color=color.new(#E0E0E0, 0), text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 5: ORB Status
+    string orbTxt = not orbEnabled ? "DISABLED" : not orbComplete ? "BUILDING" : orbBreakDir == 1 ? "LONG ↑" : orbBreakDir == -1 ? "SHORT ↓" : "RANGING"
+    color orbCol = orbBreakDir == 1 ? colBullPremium : orbBreakDir == -1 ? colBearPremium : colSlate
+    table.cell(dash, 0, 5, "ORB", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 5, orbTxt, text_color=orbCol, text_size=size.small, bgcolor=dashRowA)
+    
+    // Row 6: Volume
+    string volTxt = volConfirm ? "HIGH ✓" : "LOW"
+    color volCol = volConfirm ? colBullPremium : colSlate
+    table.cell(dash, 0, 6, "Volume", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 6, volTxt, text_color=volCol, text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 7: Institutional Zones
+    string zonesTxt = str.tostring(array.size(bearOBTops)) + "S / " + str.tostring(array.size(bullOBTops)) + "D"
+    table.cell(dash, 0, 7, "Inst. Zones", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 7, zonesTxt, text_color=color.new(#4FC3F7, 0), text_size=size.small, bgcolor=dashRowA)
+    
+    // Row 8: Session
+    string sessionTxt = inSession ? "ACTIVE (" + (finalUseSession ? "NY" : "24/7") + ")" : "CLOSED"
+    color sessionCol = inSession ? colBullPremium : colSlate
+    table.cell(dash, 0, 8, "Session", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 8, sessionTxt, text_color=sessionCol, text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 9: Reversal Phase
+    string revTxt = reversalPhase == "NONE" ? "---" : reversalPhase
+    color revCol2 = reversalPhase == "REVERSAL CONFIRMED" ? colBullPremium : reversalPhase == "NONE" ? colSlate : colAmber
+    table.cell(dash, 0, 9, "Reversal", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 9, revTxt, text_color=revCol2, text_size=size.small, bgcolor=dashRowA)
+    
+    // Row 10: SMC Data
+    int obCount = array.size(bullOBTops) + array.size(bearOBTops)
+    int fvgCount = array.size(bullFVGs) + array.size(bearFVGs)
+    string smcDataTxt = str.tostring(obCount) + " OBs / " + str.tostring(fvgCount) + " FVGs"
+    table.cell(dash, 0, 10, "SMC Data", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 10, smcDataTxt, text_color=color.new(#E0E0E0, 0), text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 11: SMC Filter Status
+    string smcTxt = not requireSMC ? "OFF" : smcLongOk ? "LONG OK ✓" : smcShortOk ? "SHORT OK ✓" : "WAITING..."
+    color smcCol = not requireSMC ? colSlate : smcLongOk ? colBullPremium : smcShortOk ? colBearPremium : colAmber
+    table.cell(dash, 0, 11, "SMC Filter", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 11, smcTxt, text_color=smcCol, text_size=size.small, bgcolor=dashRowA)
+
+    // Row 12: Confluence
+    string confTxt = requireSMC ? (smcLongOk ? "Bullish ✓" : smcShortOk ? "Bearish ✓" : "None") : "Disabled"
+    color confCol = requireSMC ? (smcLongOk ? colBullPremium : smcShortOk ? colBearPremium : colSlate) : colSlate
+    table.cell(dash, 0, 12, "Confluence", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 12, confTxt, text_color=confCol, text_size=size.small, bgcolor=dashRowB)
+    
+    // Row 13: Mode Advisor
+    table.cell(dash, 0, 13, "Mode Advisor", text_color=dashLabel, text_size=size.small, bgcolor=dashRowA)
+    table.cell(dash, 1, 13, modeAdvice, text_color=adviceColor, text_size=size.tiny, bgcolor=dashRowA)
+    
+    // Row 14: Signal Status
+    string sigTxt = longSignal ? "⚡ LONG" : shortSignal ? "⚡ SHORT" : "---"
+    color sigCol = longSignal ? colBullPremium : shortSignal ? colBearPremium : colSlate
+    table.cell(dash, 0, 14, "Signal", text_color=dashLabel, text_size=size.small, bgcolor=dashRowB)
+    table.cell(dash, 1, 14, sigTxt, text_color=sigCol, text_size=size.small, bgcolor=dashRowB)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ░░░ ALERTS ░░░
+// ══════════════════════════════════════════════════════════════════════════════
+
+if longSignal
+    alert("RetailBeastFX BeastPulse: LONG " + longType + " @ " + str.tostring(close, "#.##") + " | SL " + str.tostring(longStop, "#.##") + " | TP " + str.tostring(longTarget, "#.##"), alert.freq_once_per_bar_close)
+
+if shortSignal
+    alert("RetailBeastFX BeastPulse: SHORT " + shortType + " @ " + str.tostring(close, "#.##") + " | SL " + str.tostring(shortStop, "#.##") + " | TP " + str.tostring(shortTarget, "#.##"), alert.freq_once_per_bar_close)
+
+if isChop and not isChop[1]
+    alert("RetailBeastFX BeastPulse: Market Consolidating - Avoid Entries", alert.freq_once_per_bar_close)
+
+if orbRetestLong or orbRetestShort
+    alert("RetailBeastFX BeastPulse: ORB Retest Opportunity", alert.freq_once_per_bar_close)
+
+if snapbackBull or snapbackBear
+    alert("RetailBeastFX BeastPulse: Snapback Detected", alert.freq_once_per_bar_close)
+
+if reversalPhase == "REVERSAL CONFIRMED" and reversalPhaseBar == bar_index
+    alert("RetailBeastFX BeastPulse: Reversal Confirmed", alert.freq_once_per_bar_close)
+
+// HTF trend filter block alerts (when setup would fire but HTF blocks)
+if useHTFTrend and longSignalBase and canTradeGlobal and not trendFilterLong and htfBear
+    alert("RetailBeastFX BeastPulse: HTF Trend Bearish - No Longs", alert.freq_once_per_bar_close)
+
+if useHTFTrend and shortSignalBase and canTradeGlobal and not trendFilterShort and htfBull
+    alert("RetailBeastFX BeastPulse: HTF Trend Bullish - No Shorts", alert.freq_once_per_bar_close)
+
+// Low ATR block alert (when entering low-volatility state)
+if atrTooLow and not atrTooLow[1]
+    alert("RetailBeastFX BeastPulse: Low ATR - Waiting for Volatility", alert.freq_once_per_bar_close)
+
+// Contextual: Zone proximity (price within 5% of OB or FVG before signal)
+float proxPct = 0.05
+bool nearBullOBProx = false
+bool nearBearOBProx = false
+if array.size(bullOBBots) > 0
+    float mid = (array.get(bullOBBots, array.size(bullOBBots)-1) + array.get(bullOBTops, array.size(bullOBTops)-1)) / 2
+    nearBullOBProx := math.abs(close - mid) / close <= proxPct
+if array.size(bearOBBots) > 0
+    float mid = (array.get(bearOBBots, array.size(bearOBBots)-1) + array.get(bearOBTops, array.size(bearOBTops)-1)) / 2
+    nearBearOBProx := math.abs(close - mid) / close <= proxPct
+if alertZoneProximity and (nearBullOBProx or nearBearOBProx) and not longSignal and not shortSignal
+    string zoneMsg = nearBullOBProx and nearBearOBProx ? "OB/FVG zones" : nearBullOBProx ? "Bull OB" : "Bear OB"
+    alert("RetailBeastFX BeastPulse: Price near " + zoneMsg + " (" + str.tostring(close, "#.##") + ")", alert.freq_once_per_bar_close)
+
+// Contextual: HTF trend shift (Daily/W MA cross)
+bool htfBullPrev = htfBull[1]
+bool htfBearPrev = htfBear[1]
+if alertTrendShift and (htfBull != htfBullPrev or htfBear != htfBearPrev)
+    string trendMsg = htfBull ? "HTF Trend Bullish" : "HTF Trend Bearish"
+    alert("RetailBeastFX BeastPulse: " + trendMsg + " - Trend Shift", alert.freq_once_per_bar_close)
+
+// Watermark
+var label watermark = na
+label.delete(watermark)
+if showWatermark and barstate.islast
+    watermark := label.new(bar_index, na, "RetailBeastFX • BeastPulse", 
+         xloc=xloc.bar_index, yloc=yloc.abovebar,
+         color=color.new(color.black, 100), style=label.style_label_left,
+         textcolor=color.new(#00BFA5, 60), size=size.tiny, textalign=text.align_right)
