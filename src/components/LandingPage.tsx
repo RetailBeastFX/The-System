@@ -24,7 +24,7 @@ export default function LandingPage() {
                         <a href="#methodology" className="hover:text-white transition-colors">Methodology</a>
                         <a href="#features" className="hover:text-white transition-colors">Features</a>
                         <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-                        <Link href="/journal" className="hover:text-[#00ff9d] transition-colors">Journal Login</Link>
+                        <Link href="/system" className="hover:text-[#00ff9d] transition-colors">Risk Calculator</Link>
                     </div>
 
                     <div className="hidden md:block">
@@ -48,7 +48,7 @@ export default function LandingPage() {
                         <a href="#methodology" className="text-gray-400 hover:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}>Methodology</a>
                         <a href="#features" className="text-gray-400 hover:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}>Features</a>
                         <a href="#pricing" className="text-gray-400 hover:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a>
-                        <Link href="/journal" className="text-gray-400 hover:text-[#00ff9d] p-2" onClick={() => setIsMobileMenuOpen(false)}>Journal Login</Link>
+                        <Link href="/system" className="text-gray-400 hover:text-[#00ff9d] p-2" onClick={() => setIsMobileMenuOpen(false)}>Risk Calculator</Link>
                         <a href="#pricing" className="bg-[#00ff9d] text-black px-5 py-3 rounded-lg text-sm font-bold hover:bg-[#00cc7a] text-center" onClick={() => setIsMobileMenuOpen(false)}>
                             Get Started
                         </a>
@@ -83,8 +83,8 @@ export default function LandingPage() {
                                 <a href="#methodology" className="bg-[#00ff9d] text-black px-8 py-4 rounded-xl font-bold text-lg hover:bg-[#00cc7a] transition-all shadow-[0_0_30px_rgba(0,255,157,0.3)] text-center">
                                     See The Methodology →
                                 </a>
-                                <Link href="/journal" className="px-8 py-4 rounded-xl font-bold text-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-all text-center">
-                                    Try Journal Free
+                                <Link href="/system" className="px-8 py-4 rounded-xl font-bold text-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-all text-center">
+                                    Free Risk Calculator
                                 </Link>
                             </div>
 
@@ -254,14 +254,14 @@ export default function LandingPage() {
 
                         <div className="bg-[#111827] rounded-2xl p-8 border border-gray-800">
                             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-                                <span className="text-2xl">📊</span> Accountability Journal
+                                <span className="text-2xl">📊</span> Disciplined Risk Management
                             </h3>
                             <ul className="space-y-3 text-gray-400 text-sm">
-                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Every trader thinks they follow their rules</li>
-                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>The data tells a different story</li>
-                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Journal logs every entry, exit, win, loss</li>
-                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>You can&apos;t lie to yourself with selective memory</li>
-                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span><strong className="text-[#00ff9d]">Improvement requires measurement</strong></li>
+                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Every trader thinks they size positions correctly</li>
+                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Over-risking destroys accounts in 1-3 bad trades</li>
+                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Calculator locks in your exact lot size before entry</li>
+                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span>Always anchored to account balance + stop loss pips</li>
+                                <li className="flex gap-3"><span className="text-[#00ff9d] font-bold">→</span><strong className="text-[#00ff9d]">Risk capped. Every. Single. Trade.</strong></li>
                             </ul>
                         </div>
                     </div>
@@ -426,19 +426,19 @@ export default function LandingPage() {
                                 Translation: In backtesting, for every $100 risked across 100 trades, the system would have made $187 profit. This demonstrates the <em>theoretical edge</em> of the confluence-based methodology.
                             </p>
                             <p className="text-gray-400 text-sm">
-                                <strong className="text-white">Track YOUR actual results:</strong> The journal logs every live trade with full transparency—wins, losses, and everything in between. Real performance beats backtested promises.
+                                <strong className="text-white">Manage YOUR risk precisely:</strong> The calculator locks your position size to your account balance and stop loss—every trade, no guessing.
                             </p>
                         </div>
                     </div>
 
-                    {/* Journal Callout */}
+                    {/* Calculator Callout */}
                     <div className="mt-12 text-center p-8 bg-[#111827] rounded-2xl border border-gray-800">
-                        <h3 className="text-2xl font-bold text-white mb-4">Your Real Results Matter More</h3>
+                        <h3 className="text-2xl font-bold text-white mb-4">Size Every Position Before You Click Buy</h3>
                         <p className="text-gray-400 mb-6 max-w-2xl mx-auto">
-                            Backtests show what <em>could have</em> happened. The journal shows what <em>actually</em> happens when you trade live. Log every trade. Measure your real edge. No selective memory allowed.
+                            Balance → Risk % → Stop Loss → Lot Size. That&apos;s the entire loop. Run it on every trade. No exceptions.
                         </p>
-                        <Link href="/journal" className="inline-block bg-[#00ff9d] text-black px-8 py-4 rounded-xl font-bold hover:bg-[#00cc7a] transition-all shadow-[0_0_20px_rgba(0,255,157,0.2)]">
-                            Start Journaling Free →
+                        <Link href="/system" className="inline-block bg-[#00ff9d] text-black px-8 py-4 rounded-xl font-bold hover:bg-[#00cc7a] transition-all shadow-[0_0_20px_rgba(0,255,157,0.2)]">
+                            Open Risk Calculator →
                         </Link>
                     </div>
                 </div>
@@ -477,9 +477,9 @@ export default function LandingPage() {
                             <div className="flex gap-6">
                                 <div className="w-12 h-12 rounded-full bg-[#00ff9d]/10 border border-[#00ff9d] text-[#00ff9d] font-bold flex items-center justify-center shrink-0 text-xl">3</div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white mb-2">Every trade must be logged.</h3>
-                                    <p className="text-gray-400 text-sm mb-2 leading-relaxed">The journal tracks entries, exits, R:R, win rate, and profit factor. Elite tier auto-syncs from MT4/MT5. No manual logging excuses.</p>
-                                    <p className="text-xs text-gray-500 italic">Selective memory kills improvement. Data reveals what your brain hides. Professional firms demand this. So does this system.</p>
+                                    <h3 className="text-xl font-bold text-white mb-2">Every trade must be sized correctly.</h3>
+                                    <p className="text-gray-400 text-sm mb-2 leading-relaxed">The calculator locks your lot size to your exact account balance and stop loss distance. No mental math. No overriding with FOMO.</p>
+                                    <p className="text-xs text-gray-500 italic">One oversized trade can blow weeks of gains. Professional risk management means knowing your exposure before entry. Every time.</p>
                                 </div>
                             </div>
                         </div>
@@ -503,15 +503,15 @@ export default function LandingPage() {
                             Access <span className="text-[#00ff9d]">Levels</span>
                         </h2>
                         <p className="text-gray-400">
-                            Start with the journal for free. Upgrade when you&apos;re ready for systematic enforcement.
+                            Start with the free Risk Calculator. Upgrade for the full mechanical system.
                         </p>
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-8">
-                        {/* JOURNAL */}
+                        {/* CALCULATOR */}
                         <div className="bg-[#111827] rounded-3xl p-8 border border-gray-800 flex flex-col">
-                            <h3 className="text-2xl font-bold text-white mb-2">Journal</h3>
-                            <p className="text-gray-400 text-sm mb-8">Build accountability. Track every trade.</p>
+                            <h3 className="text-2xl font-bold text-white mb-2">Calculator</h3>
+                            <p className="text-gray-400 text-sm mb-8">Size every position. Cap every risk.</p>
 
                             <div className="mb-8">
                                 <span className="text-5xl font-bold text-white">$0</span>
@@ -519,17 +519,17 @@ export default function LandingPage() {
                             </div>
 
                             <ul className="space-y-4 mb-8 text-sm flex-1">
-                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Unlimited trade logging</li>
-                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Win rate & R:R tracking</li>
-                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Basic analytics dashboard</li>
-                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Trade notes & tags</li>
-                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> CSV export</li>
+                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Lot size from balance + risk %</li>
+                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> 47 brokers across all asset classes</li>
+                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Commission-aware calculation</li>
+                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Margin estimate &amp; pip value</li>
+                                <li className="flex items-center gap-3 text-gray-300"><span className="text-[#00ff9d] font-bold">✓</span> Copy trade line for MT4/MT5</li>
                                 <li className="flex items-center gap-3 text-gray-600"><span className="font-bold">✗</span> No indicator access</li>
                                 <li className="flex items-center gap-3 text-gray-600"><span className="font-bold">✗</span> No automated signals</li>
                             </ul>
 
-                            <Link href="/journal" className="block w-full py-4 rounded-xl font-bold text-center border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white transition-all">
-                                Start Free
+                            <Link href="/system" className="block w-full py-4 rounded-xl font-bold text-center border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white transition-all">
+                                Open Calculator
                             </Link>
                         </div>
 
@@ -670,11 +670,11 @@ export default function LandingPage() {
                     <div className="space-y-4">
                         <details className="bg-[#111827] rounded-xl border border-gray-800 overflow-hidden group">
                             <summary className="px-6 py-5 cursor-pointer flex items-center justify-between text-white font-bold hover:text-[#00ff9d] transition-colors list-none">
-                                <span>Is the journal really free forever?</span>
+                                <span>Is the Risk Calculator really free forever?</span>
                                 <span className="text-[#00ff9d] group-open:rotate-180 transition-transform">▼</span>
                             </summary>
                             <div className="px-6 pb-5 text-gray-400 text-sm leading-relaxed border-t border-gray-800 pt-4">
-                                <p className="mb-3"><strong className="text-white">Yes.</strong> The trading journal is completely free with unlimited logging, tracking, and analytics. No credit card required.</p>
+                                <p className="mb-3"><strong className="text-white">Yes.</strong> The Risk Calculator is completely free — no account, no credit card, no limits. Open it and start sizing trades immediately.</p>
                                 <p>The indicator (ORB lines, alerts, trend filters) requires a paid subscription.</p>
                             </div>
                         </details>
