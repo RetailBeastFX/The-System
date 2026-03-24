@@ -273,11 +273,14 @@ export default function RiskRewardCalculator(){
     const txt=`${safeSize} ${cfg.unitLabel.toLowerCase()}`;
     navigator.clipboard.writeText(txt).then(()=>showToast(`Copied: ${txt}`));
   };
-  // Copy full trade line
+  // Copy full trade line — clean execution format
   const copyLine=()=>{
     if(!safeSize||!sl)return;
-    const txt=`${sym} ${direction} ${safeSize} ${cfg.unitLabel.toLowerCase()} SL ${sl} ${cfg.slUnit} Risk ${fmtD(res?.riskDollar??0)}`;
-    navigator.clipboard.writeText(txt).then(()=>showToast("Trade line copied!"));
+    const action = direction==="Long"?"BUY":"SELL";
+    const pct = riskMode==="pct" ? `${riskPct}%` : `${r2(effRiskD/bal*100).toFixed(1)}%`;
+    const tpLine = tp>0 ? `\nTP: ${tp} ${cfg.slUnit}` : "";
+    const txt=`${sym} ${action} ${safeSize} ${cfg.unitLabel.toUpperCase()}\nSL: ${sl} ${cfg.slUnit}${tpLine}\nRisk: ${fmtD(res?.riskDollar??0)} (${pct})`;
+    navigator.clipboard.writeText(txt).then(()=>showToast("Trade copied!"));
   };
 
   // Switch mode: auto-populate $ field from current effective risk
@@ -308,6 +311,7 @@ export default function RiskRewardCalculator(){
   const sel ="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white outline-none cursor-pointer focus:border-white/25";
 
   const pctColor = (res?.pctRisk||0)>3?"#f87171":(res?.pctRisk||0)>2?"#fbbf24":"#34d399";
+  const showRiskWarning = (res?.pctRisk||0) > 2;
 
   return(
     <div className="min-h-screen text-white"
@@ -484,7 +488,7 @@ export default function RiskRewardCalculator(){
                     {[10,15,20,30,50,100].map(p=>(
                       <button
                         key={p}
-                        onClick={()=>{setSlPips(p.toString());setQuickSL(p);}}
+                        onClick={()=>{setSlPips(p.toString());setQuickSL(p);setTpPips((p*2).toString());}}
                         className="py-2.5 rounded-xl text-[11px] font-black transition-all"
                         style={quickSL===p
                           ?{background:color+"20",color,border:`1.5px solid ${color}`}
@@ -495,7 +499,7 @@ export default function RiskRewardCalculator(){
                 )}
 
                 <div className="relative">
-                  <input type="number" value={slPips} onChange={e=>{setSlPips(e.target.value);setQuickSL(null);}}
+                  <input type="number" value={slPips} onChange={e=>{const v=e.target.value;setSlPips(v);setQuickSL(null);const n=parseFloat(v);if(n>0)setTpPips(r2(n*2).toString());}}
                     placeholder={cfg.slPH} step={cfg.slStep}
                     className={inp} style={{borderColor:sl>0?"#f8717150":undefined,paddingRight:"3.5rem"}}/>
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 pointer-events-none">
@@ -629,6 +633,14 @@ export default function RiskRewardCalculator(){
                   <span className="text-[9px] text-slate-700 font-bold tracking-widest">LIVE</span>
                 </div>
               </div>
+
+              {/* Risk warning — only shown when pctRisk > 2% */}
+              {showRiskWarning&&(
+                <div className="flex items-center gap-2 px-5 py-2.5 border-b text-[11px] font-bold"
+                  style={{borderColor:"#f8717130",background:"#f8717108",color:"#f87171"}}>
+                  ⚠️ Most traders stay under 2% risk per trade
+                </div>
+              )}
 
               <div className="px-5 py-5">
 
