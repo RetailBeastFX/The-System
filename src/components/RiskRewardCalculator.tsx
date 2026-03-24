@@ -206,6 +206,7 @@ export default function RiskRewardCalculator(){
   const[riskDollar, setRiskD]  = useState("");       // override: direct $ risk
   const[riskMode, setRMode]    = useState<"pct"|"dollar">("pct"); // toggle
   const[slPips, setSlPips]     = useState("20");
+  const[quickSL, setQuickSL]   = useState<number|null>(20); // quick preset selection
   const[tpPips, setTpPips]     = useState("40");
   const[customPV, setCustPV]   = useState("");
   const[tickTV, setTickTV]     = useState("12.50");
@@ -471,13 +472,30 @@ export default function RiskRewardCalculator(){
                 )}
               </div>
 
-              {/* SL */}
+              {/* SL — quick presets for beginners, manual input for pros */}
               <div className="mb-3">
                 <label className="text-[10px] uppercase tracking-widest text-slate-600 mb-1.5 block">
                   Stop Loss <span className="normal-case font-normal text-slate-700">· {cfg.slUnit}</span>
                 </label>
+
+                {/* One-tap pip presets (Forex only) */}
+                {asset==="FOREX"&&(
+                  <div className="grid grid-cols-6 gap-1 mb-2">
+                    {[10,15,20,30,50,100].map(p=>(
+                      <button
+                        key={p}
+                        onClick={()=>{setSlPips(p.toString());setQuickSL(p);}}
+                        className="py-2.5 rounded-xl text-[11px] font-black transition-all"
+                        style={quickSL===p
+                          ?{background:color+"20",color,border:`1.5px solid ${color}`}
+                          :{background:"rgba(255,255,255,0.04)",color:"#475569",border:"1.5px solid transparent"}}
+                      >{p}</button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="relative">
-                  <input type="number" value={slPips} onChange={e=>setSlPips(e.target.value)}
+                  <input type="number" value={slPips} onChange={e=>{setSlPips(e.target.value);setQuickSL(null);}}
                     placeholder={cfg.slPH} step={cfg.slStep}
                     className={inp} style={{borderColor:sl>0?"#f8717150":undefined,paddingRight:"3.5rem"}}/>
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 pointer-events-none">
@@ -491,97 +509,101 @@ export default function RiskRewardCalculator(){
                 </p>}
               </div>
 
-              {/* Broker */}
-              <div className="mb-3">
-                <label className="text-[10px] uppercase tracking-widest text-slate-600 mb-1.5 block">
-                  Broker
-                </label>
-                <div className="flex gap-1.5">
-                  <select value={brokerName} onChange={e=>setBroker(e.target.value)}
-                    title="Select broker" className={sel+" flex-1 text-xs"}>
-                    {bList.map(b=><option key={b.name} value={b.name}>{b.name}</option>)}
-                  </select>
-                  <div className="shrink-0 bg-black/40 border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs font-black text-center min-w-[58px]"
-                    style={{color}}>
-                    1:{leverage.toLocaleString()}
-                  </div>
-                </div>
-                {broker&&(
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold"
-                      style={{background:STATUS[broker.status].color+"18",color:STATUS[broker.status].color}}>
-                      {STATUS[broker.status].label}
-                    </span>
-                    <span className="text-[10px] text-slate-700 truncate">{broker.note}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Browse all brokers */}
+              {/* Advanced toggle — broker + pip value hidden by default */}
               <button onClick={()=>setShowB(!showBrokers)}
-                className="w-full text-[10px] text-slate-600 hover:text-slate-400 transition-colors uppercase tracking-widest py-1.5 text-center">
-                {showBrokers?"▲ Hide":"▼ Browse"} all {bList.length} brokers
+                className="w-full text-[10px] text-slate-600 hover:text-slate-400 transition-colors tracking-widest py-1.5 text-center flex items-center justify-center gap-1.5 mt-1">
+                <span style={{color:showBrokers?color:undefined}}>{showBrokers?"▲":"▼"}</span>
+                {showBrokers?"Hide advanced":"Broker & pip value"}
               </button>
+
               {showBrokers&&(
-                <div className="mt-2 border-t border-white/[0.05] pt-2">
-                  <div className="grid grid-cols-1 gap-1 max-h-56 overflow-y-auto pr-0.5">
-                    {bList.map(b=>(
-                      <button key={b.name} onClick={()=>{setBroker(b.name);setShowB(false);}}
-                        className="flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-all hover:bg-white/[0.03]"
-                        style={brokerName===b.name?{borderColor:color+"50",background:color+"08"}:{borderColor:"rgba(255,255,255,0.04)"}}>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-white truncate">{b.name}</span>
-                            <span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0"
-                              style={{background:STATUS[b.status].color+"15",color:STATUS[b.status].color}}>
-                              {STATUS[b.status].label}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-700 truncate">{b.note}</div>
-                        </div>
-                        <div className="text-right ml-2 shrink-0">
-                          <div className="text-xs font-bold" style={{color}}>1:{b.leverage.toLocaleString()}</div>
-                          <div className="text-[10px] text-slate-700">
-                            {b.feeType==="flat"||b.feeType==="spreadOnly"?"$0"
-                              :b.feeType==="percent"?`${b.fee}%`
-                              :b.feeType==="perLot"?`$${b.fee}/lot`
-                              :b.feeType==="perShare"?`$${b.fee}/sh`
-                              :`$${b.fee}/ct`}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                <div className="mt-3 border-t border-white/[0.05] pt-3 space-y-3">
 
-              {/* Pip value override (Forex/Crypto only) */}
-              {(asset==="FOREX"||asset==="CRYPTO")&&(
-                <div className="mt-3 pt-3 border-t border-white/[0.05]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-600 uppercase tracking-widest shrink-0">Pip Value $</span>
-                    <input type="number" value={customPV} onChange={e=>setCustPV(e.target.value)}
-                      placeholder={String(defaultPipVal(sym))}
-                      className="flex-1 bg-black/40 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs font-mono outline-none text-white placeholder-slate-700 focus:border-white/20"
-                      style={customPV?{borderColor:color+"60",color}:{}}/>
-                    {customPV&&<button onClick={()=>setCustPV("")} className="text-[10px] text-slate-600 hover:text-white transition-colors shrink-0">✕</button>}
-                  </div>
-                  <p className="text-[10px] text-slate-700 mt-1">${effectivePV}/pip · auto for {sym}</p>
-                </div>
-              )}
+                  {/* Broker dropdown */}
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-slate-600 mb-1.5 block">Broker</label>
+                    <div className="flex gap-1.5">
+                      <select value={brokerName} onChange={e=>setBroker(e.target.value)}
+                        title="Select broker" className={sel+" flex-1 text-xs"}>
+                        {bList.map(b=><option key={b.name} value={b.name}>{b.name}</option>)}
+                      </select>
+                      <div className="shrink-0 bg-black/40 border border-white/[0.06] rounded-xl px-2.5 py-2 text-xs font-black text-center min-w-[58px]"
+                        style={{color}}>
+                        1:{leverage.toLocaleString()}
+                      </div>
+                    </div>
+                    {broker&&(
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold"
+                          style={{background:STATUS[broker.status].color+"18",color:STATUS[broker.status].color}}>
+                          {STATUS[broker.status].label}
+                        </span>
+                        <span className="text-[10px] text-slate-700 truncate">{broker.note}</span>
+                      </div>
+                    )}
 
-              {/* Futures tick value */}
-              {asset==="FUTURES"&&(
-                <div className="mt-3 pt-3 border-t border-white/[0.05]">
-                  <label className="text-[10px] uppercase tracking-widest text-slate-600 mb-1.5 block">
-                    Tick Value <span className="normal-case font-normal text-slate-700">· auto-filled</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-2.5 text-slate-600 text-xs">$</span>
-                    <input type="number" value={tickTV} onChange={e=>setTickTV(e.target.value)}
-                      placeholder="12.50" className={inp+" pl-7"}
-                      style={{borderColor:tickTV?color+"50":undefined}}/>
+                    {/* Browse all brokers */}
+                    <div className="mt-2 border-t border-white/[0.05] pt-2">
+                      <div className="grid grid-cols-1 gap-1 max-h-56 overflow-y-auto pr-0.5">
+                        {bList.map(b=>(
+                          <button key={b.name} onClick={()=>{setBroker(b.name);setShowB(false);}}
+                            className="flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-all hover:bg-white/[0.03]"
+                            style={brokerName===b.name?{borderColor:color+"50",background:color+"08"}:{borderColor:"rgba(255,255,255,0.04)"}}>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white truncate">{b.name}</span>
+                                <span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0"
+                                  style={{background:STATUS[b.status].color+"15",color:STATUS[b.status].color}}>
+                                  {STATUS[b.status].label}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-700 truncate">{b.note}</div>
+                            </div>
+                            <div className="text-right ml-2 shrink-0">
+                              <div className="text-xs font-bold" style={{color}}>1:{b.leverage.toLocaleString()}</div>
+                              <div className="text-[10px] text-slate-700">
+                                {b.feeType==="flat"||b.feeType==="spreadOnly"?"$0"
+                                  :b.feeType==="percent"?`${b.fee}%`
+                                  :b.feeType==="perLot"?`$${b.fee}/lot`
+                                  :b.feeType==="perShare"?`$${b.fee}/sh`
+                                  :`$${b.fee}/ct`}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Pip value override (Forex/Crypto only) */}
+                  {(asset==="FOREX"||asset==="CRYPTO")&&(
+                    <div className="pt-3 border-t border-white/[0.05]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-600 uppercase tracking-widest shrink-0">Pip Value $</span>
+                        <input type="number" value={customPV} onChange={e=>setCustPV(e.target.value)}
+                          placeholder={String(defaultPipVal(sym))}
+                          className="flex-1 bg-black/40 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs font-mono outline-none text-white placeholder-slate-700 focus:border-white/20"
+                          style={customPV?{borderColor:color+"60",color}:{}}/>
+                        {customPV&&<button onClick={()=>setCustPV("")} className="text-[10px] text-slate-600 hover:text-white transition-colors shrink-0">✕</button>}
+                      </div>
+                      <p className="text-[10px] text-slate-700 mt-1">${effectivePV}/pip · auto for {sym}</p>
+                    </div>
+                  )}
+
+                  {/* Futures tick value */}
+                  {asset==="FUTURES"&&(
+                    <div className="pt-3 border-t border-white/[0.05]">
+                      <label className="text-[10px] uppercase tracking-widest text-slate-600 mb-1.5 block">
+                        Tick Value <span className="normal-case font-normal text-slate-700">· auto-filled</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-2.5 text-slate-600 text-xs">$</span>
+                        <input type="number" value={tickTV} onChange={e=>setTickTV(e.target.value)}
+                          placeholder="12.50" className={inp+" pl-7"}
+                          style={{borderColor:tickTV?color+"50":undefined}}/>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
