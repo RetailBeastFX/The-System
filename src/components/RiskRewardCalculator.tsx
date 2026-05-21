@@ -21,21 +21,32 @@ const STATUS: Record<BrkStatus,{label:string;color:string}> = {
 // ─── Broker Directory ────────────────────────────────────────────────────────
 const BROKERS: Record<AssetKey, Broker[]> = {
   FOREX: [
-    {name:"IC Markets",     status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"ASIC, CySEC — Raw spread ECN"},
-    {name:"Pepperstone",    status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"ASIC, FCA, DFSA"},
-    {name:"OANDA",          status:"regulated",leverage:50,   fee:0,    feeType:"spreadOnly",note:"US / Canada regulated"},
-    {name:"IG Group",       status:"regulated",leverage:200,  fee:0,    feeType:"spreadOnly",note:"FCA, ASIC — global"},
-    {name:"Forex.com",      status:"regulated",leverage:50,   fee:0,    feeType:"spreadOnly",note:"US CFTC/NFA regulated"},
-    {name:"FXCM",           status:"regulated",leverage:200,  fee:0,    feeType:"spreadOnly",note:"FCA, ASIC"},
-    {name:"Coinexx",        status:"offshore", leverage:500,  fee:2.00, feeType:"perLot",    note:"Offshore — crypto deposits"},
-    {name:"Hankotrade",     status:"offshore", leverage:500,  fee:2.00, feeType:"perLot",    note:"Offshore — no KYC tiers"},
-    {name:"Hugo's Way",     status:"offshore", leverage:500,  fee:5.00, feeType:"perLot",    note:"Offshore — MT4/MT5"},
-    {name:"Sway Markets",   status:"offshore", leverage:500,  fee:3.50, feeType:"perLot",    note:"Offshore — no restrictions"},
-    {name:"Exness",         status:"offshore", leverage:2000, fee:3.50, feeType:"perLot",    note:"Offshore — highest leverage"},
-    {name:"XM",             status:"offshore", leverage:888,  fee:0,    feeType:"spreadOnly",note:"Offshore — bonus programs"},
-    {name:"FBS",            status:"offshore", leverage:3000, fee:0,    feeType:"spreadOnly",note:"Offshore — micro lots"},
-    {name:"RoboForex",      status:"offshore", leverage:2000, fee:4.00, feeType:"perLot",    note:"Offshore — cent accounts"},
-    {name:"Alpari",         status:"offshore", leverage:1000, fee:3.00, feeType:"perLot",    note:"Offshore — longest running"},
+    {name:"IC Markets",       status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"ASIC, CySEC — Raw spread ECN"},
+    {name:"Pepperstone",      status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"ASIC, FCA, DFSA"},
+    {name:"OANDA",            status:"regulated",leverage:50,   fee:0,    feeType:"spreadOnly",note:"US / Canada regulated"},
+    {name:"IG Group",         status:"regulated",leverage:200,  fee:0,    feeType:"spreadOnly",note:"FCA, ASIC — global"},
+    {name:"Forex.com",        status:"regulated",leverage:50,   fee:0,    feeType:"spreadOnly",note:"US CFTC/NFA regulated"},
+    {name:"FXCM",             status:"regulated",leverage:200,  fee:0,    feeType:"spreadOnly",note:"FCA, ASIC"},
+    {name:"TD Ameritrade FX", status:"regulated",leverage:50,   fee:0,    feeType:"spreadOnly",note:"thinkorswim — US regulated"},
+    {name:"Interactive Brokers FX",status:"regulated",leverage:40,fee:2.00,feeType:"perLot", note:"IBKR — tight spreads, low fee"},
+    {name:"Coinexx",          status:"offshore", leverage:500,  fee:2.00, feeType:"perLot",    note:"Offshore — crypto deposits"},
+    {name:"Hankotrade",       status:"offshore", leverage:500,  fee:2.00, feeType:"perLot",    note:"Offshore — no KYC tiers"},
+    {name:"Hugo's Way",       status:"offshore", leverage:500,  fee:5.00, feeType:"perLot",    note:"Offshore — MT4/MT5"},
+    {name:"Sway Markets",     status:"offshore", leverage:500,  fee:3.50, feeType:"perLot",    note:"Offshore — no restrictions"},
+    {name:"Exness",           status:"offshore", leverage:2000, fee:3.50, feeType:"perLot",    note:"Offshore — highest leverage"},
+    {name:"XM",               status:"offshore", leverage:888,  fee:0,    feeType:"spreadOnly",note:"Offshore — bonus programs"},
+    {name:"FBS",              status:"offshore", leverage:3000, fee:0,    feeType:"spreadOnly",note:"Offshore — micro lots"},
+    {name:"RoboForex",        status:"offshore", leverage:2000, fee:4.00, feeType:"perLot",    note:"Offshore — cent accounts"},
+    {name:"Alpari",           status:"offshore", leverage:1000, fee:3.00, feeType:"perLot",    note:"Offshore — longest running"},
+    {name:"FxPro",            status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"FCA, CySEC — MT4/cTrader"},
+    {name:"Vantage",          status:"regulated",leverage:500,  fee:3.00, feeType:"perLot",    note:"ASIC — RAW ECN"},
+    {name:"EightCap",         status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"ASIC — MT4/MT5"},
+    {name:"ThinkMarkets",     status:"regulated",leverage:500,  fee:3.50, feeType:"perLot",    note:"FCA, ASIC — ThinkTrader"},
+    {name:"Tickmill",         status:"regulated",leverage:500,  fee:2.00, feeType:"perLot",    note:"FCA — tightest commissions"},
+    {name:"FTMO",             status:"prop",     leverage:100,  fee:0,    feeType:"flat",      note:"Prop — 90% split, popular"},
+    {name:"The5%ers",         status:"prop",     leverage:30,   fee:0,    feeType:"flat",      note:"Prop — scaling plan"},
+    {name:"E8 Funding",       status:"prop",     leverage:100,  fee:0,    feeType:"flat",      note:"Prop — 80% split"},
+    {name:"MyForexFunds",     status:"prop",     leverage:100,  fee:0,    feeType:"flat",      note:"Prop — rapid eval"},
   ],
   FUTURES: [
     {name:"NinjaTrader",         status:"regulated",leverage:50,fee:0.09,feeType:"perContract",note:"NinjaTrader platform"},
@@ -45,11 +56,15 @@ const BROKERS: Record<AssetKey, Broker[]> = {
     {name:"Optimus Futures",     status:"regulated",leverage:50,fee:0.25,feeType:"perContract",note:"Volume-tiered pricing"},
     {name:"Interactive Brokers", status:"regulated",leverage:50,fee:0.85,feeType:"perContract",note:"Global — lowest margin rates"},
     {name:"Charles Schwab",      status:"regulated",leverage:50,fee:1.50,feeType:"perContract",note:"thinkorswim platform"},
+    {name:"Stage 5 Trading",     status:"regulated",leverage:50,fee:0.25,feeType:"perContract",note:"Low cost — Rithmic/CQG"},
+    {name:"EdgeClear",           status:"regulated",leverage:50,fee:0.35,feeType:"perContract",note:"US — community focused"},
+    {name:"Wedbush Futures",     status:"regulated",leverage:50,fee:0.50,feeType:"perContract",note:"US — FCM, low minimums"},
     {name:"Topstep",             status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"90% split · $49/mo eval"},
     {name:"Apex Trader Funding", status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"90% split · $35/mo eval"},
     {name:"TradeDay",            status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"90% split · $39/mo eval"},
     {name:"Earn2Trade",          status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"80% split — Gauntlet eval"},
     {name:"MyFundedFutures",     status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"Up to 100% split"},
+    {name:"Bulenox",             status:"prop",     leverage:50,fee:0,   feeType:"flat",       note:"Prop — low cost evals"},
   ],
   CRYPTO: [
     {name:"Binance",           status:"varies",   leverage:125,fee:0.10, feeType:"percent",note:"0.10% m/t — largest CEX"},
@@ -60,18 +75,30 @@ const BROKERS: Record<AssetKey, Broker[]> = {
     {name:"MEXC",              status:"offshore", leverage:200,fee:0.01, feeType:"percent",note:"0% maker / 0.01% taker"},
     {name:"Phemex",            status:"offshore", leverage:100,fee:0.06, feeType:"percent",note:"0.06% m/t — offshore"},
     {name:"BitMEX",            status:"offshore", leverage:100,fee:0.075,feeType:"percent",note:"0.075% taker — perp only"},
+    {name:"KuCoin",            status:"offshore", leverage:100,fee:0.10, feeType:"percent",note:"0.10% m/t — wide altcoins"},
+    {name:"Gate.io",           status:"offshore", leverage:100,fee:0.10, feeType:"percent",note:"0.10% m/t — most altcoins"},
+    {name:"Bitget",            status:"offshore", leverage:125,fee:0.06, feeType:"percent",note:"0.06% m/t — copy trading"},
     {name:"dYdX",              status:"offshore", leverage:20, fee:0.05, feeType:"percent",note:"0.02/0.05% — decentralized"},
+    {name:"Robinhood Crypto",  status:"regulated",leverage:1,  fee:0,    feeType:"flat",   note:"$0 — spread only, US regulated"},
+    {name:"Webull Crypto",     status:"regulated",leverage:1,  fee:0,    feeType:"flat",   note:"$0 — spread only, US regulated"},
   ],
   STOCKS: [
     {name:"Charles Schwab",      status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0/trade — thinkorswim"},
     {name:"Interactive Brokers", status:"regulated",leverage:4,  fee:0.005,feeType:"perShare", note:"$0.005/share — pro tools"},
     {name:"Fidelity",            status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0/trade — no PFOF"},
-    {name:"Webull",              status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 — PFOF model"},
+    {name:"Webull",              status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 — Level 2 included"},
+    {name:"Robinhood",           status:"regulated",leverage:2,  fee:0,    feeType:"flat",    note:"$0 — PFOF model"},
     {name:"tastytrade",          status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 stocks — options focus"},
     {name:"Moomoo",              status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 — Level 2 free"},
+    {name:"Public",              status:"regulated",leverage:1,  fee:0,    feeType:"flat",    note:"$0 — no PFOF, social"},
+    {name:"SoFi Invest",         status:"regulated",leverage:1,  fee:0,    feeType:"flat",    note:"$0 — fractional shares"},
+    {name:"Ally Invest",         status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0/trade — Ally Bank linked"},
+    {name:"E*TRADE",             status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 — Morgan Stanley"},
+    {name:"Merrill Edge",        status:"regulated",leverage:4,  fee:0,    feeType:"flat",    note:"$0 — BofA preferred rewards"},
     {name:"TradeZero",           status:"offshore", leverage:6,  fee:0,    feeType:"flat",    note:"No PDT — offshore"},
-    {name:"CMEG",                status:"offshore", leverage:6,  fee:2.95, feeType:"perTrade", note:"No PDT — $2.95/trade"},
-    {name:"Lightspeed",          status:"regulated",leverage:6,  fee:0.004,feeType:"perShare", note:"$0.004/share — DMA"},
+    {name:"CMEG",                status:"offshore", leverage:6,  fee:2.95, feeType:"perTrade",note:"No PDT — $2.95/trade"},
+    {name:"Lightspeed",          status:"regulated",leverage:6,  fee:0.004,feeType:"perShare",note:"$0.004/share — DMA"},
+    {name:"DAS Trader Pro",      status:"regulated",leverage:6,  fee:0.005,feeType:"perShare",note:"$0.005/share — DMA platform"},
   ],
   OPTIONS: [
     {name:"Charles Schwab",      status:"regulated",leverage:4,fee:0.65,feeType:"perContract",note:"$0.65/contract"},
@@ -82,6 +109,11 @@ const BROKERS: Record<AssetKey, Broker[]> = {
     {name:"Robinhood",           status:"regulated",leverage:4,fee:0,   feeType:"flat",       note:"$0 — PFOF model"},
     {name:"Tradier",             status:"regulated",leverage:4,fee:0.35,feeType:"perContract",note:"$0.35/contract"},
     {name:"Power E*TRADE",       status:"regulated",leverage:4,fee:0.65,feeType:"perContract",note:"$0.65 / $0.50 high vol"},
+    {name:"TD Ameritrade",       status:"regulated",leverage:4,fee:0.65,feeType:"perContract",note:"$0.65/contract — thinkorswim"},
+    {name:"Ally Invest",         status:"regulated",leverage:4,fee:0.50,feeType:"perContract",note:"$0.50/contract"},
+    {name:"Merrill Edge",        status:"regulated",leverage:4,fee:0.65,feeType:"perContract",note:"$0.65/contract"},
+    {name:"Moomoo",              status:"regulated",leverage:4,fee:0,   feeType:"flat",       note:"$0 — PFOF, Level 2 free"},
+    {name:"Public",              status:"regulated",leverage:4,fee:0,   feeType:"flat",       note:"$0 — no PFOF options"},
   ],
 };
 
@@ -212,12 +244,23 @@ export default function RiskRewardCalculator(){
   const[tickTV, setTickTV]     = useState("12.50");
   const[brokerName, setBroker] = useState("IC Markets");
   const[showBrokers, setShowB] = useState(false);
+  const[showAddBrk, setShowAdd]= useState(false);
+  const[newBrkName, setNBName] = useState("");
+  const[newBrkLev,  setNBLev]  = useState("100");
+  const[newBrkFee,  setNBFee]  = useState("0");
+  const[newBrkType, setNBType] = useState<FeeType>("perLot");
+  const[customBrokers, setCustomBrokers] = useState<Record<AssetKey,Broker[]>>(()=>{
+    try{
+      const s=typeof window!=="undefined"?localStorage.getItem("rbfx_custom_brokers_v1"):null;
+      return s?JSON.parse(s):{FOREX:[],STOCKS:[],OPTIONS:[],FUTURES:[],CRYPTO:[]};
+    }catch{return{FOREX:[],STOCKS:[],OPTIONS:[],FUTURES:[],CRYPTO:[]};}
+  });
   const[toast, setToast]       = useState<string|null>(null);
   const toastTimer             = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   const cfg      = ASSETS[asset];
   const color    = cfg.color;
-  const bList    = BROKERS[asset]||[];
+  const bList    = [...(customBrokers[asset]||[]), ...(BROKERS[asset]||[])];
   const broker   = bList.find(b=>b.name===brokerName)||bList[0]||null;
   const leverage = broker?.leverage||50;
   const futSpec  = FUTURES_SPECS[symbol.toUpperCase()];
@@ -289,6 +332,25 @@ export default function RiskRewardCalculator(){
       setRiskD(effRiskD.toFixed(2));
     }
     setRMode(m);
+  };
+
+  // Custom broker helpers
+  const saveCustom=(next:Record<AssetKey,Broker[]>)=>{
+    setCustomBrokers(next);
+    try{localStorage.setItem("rbfx_custom_brokers_v1",JSON.stringify(next));}catch{}
+  };
+  const addBroker=()=>{
+    if(!newBrkName.trim())return;
+    const nb:Broker={name:newBrkName.trim(),status:"varies",leverage:parseFloat(newBrkLev)||100,fee:parseFloat(newBrkFee)||0,feeType:newBrkType,note:"Custom"};
+    const next={...customBrokers,[asset]:[nb,...(customBrokers[asset]||[])]};
+    saveCustom(next);setBroker(nb.name);setNBName("");setNBLev("100");setNBFee("0");setShowAdd(false);
+    showToast(`Added: ${nb.name}`);
+  };
+  const removeBroker=(name:string)=>{
+    const next={...customBrokers,[asset]:(customBrokers[asset]||[]).filter(b=>b.name!==name)};
+    saveCustom(next);
+    if(brokerName===name)setBroker(bList.find(b=>b.name!==name)?.name||"");
+    showToast(`Removed: ${name}`);
   };
 
   // Clear toast on unmount
@@ -548,33 +610,88 @@ export default function RiskRewardCalculator(){
 
                     {/* Browse all brokers */}
                     <div className="mt-2 border-t border-white/[0.05] pt-2">
-                      <div className="grid grid-cols-1 gap-1 max-h-56 overflow-y-auto pr-0.5">
-                        {bList.map(b=>(
-                          <button key={b.name} onClick={()=>{setBroker(b.name);setShowB(false);}}
-                            className="flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-all hover:bg-white/[0.03]"
-                            style={brokerName===b.name?{borderColor:color+"50",background:color+"08"}:{borderColor:"rgba(255,255,255,0.04)"}}>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-white truncate">{b.name}</span>
-                                <span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0"
-                                  style={{background:STATUS[b.status].color+"15",color:STATUS[b.status].color}}>
-                                  {STATUS[b.status].label}
-                                </span>
+                      <div className="grid grid-cols-1 gap-1 max-h-64 overflow-y-auto pr-0.5">
+                        {bList.map(b=>{
+                          const isCustom=(customBrokers[asset]||[]).some(c=>c.name===b.name);
+                          return(
+                          <div key={b.name} className="relative group">
+                            <button onClick={()=>{setBroker(b.name);setShowB(false);}}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-all hover:bg-white/[0.03]"
+                              style={brokerName===b.name?{borderColor:color+"50",background:color+"08"}:{borderColor:"rgba(255,255,255,0.04)"}}>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-white truncate">{b.name}</span>
+                                  <span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0"
+                                    style={{background:STATUS[b.status].color+"15",color:STATUS[b.status].color}}>
+                                    {STATUS[b.status].label}
+                                  </span>
+                                  {isCustom&&<span className="text-[9px] px-1 py-0.5 rounded font-bold shrink-0 bg-white/10 text-slate-500">custom</span>}
+                                </div>
+                                <div className="text-[10px] text-slate-700 truncate">{b.note}</div>
                               </div>
-                              <div className="text-[10px] text-slate-700 truncate">{b.note}</div>
-                            </div>
-                            <div className="text-right ml-2 shrink-0">
-                              <div className="text-xs font-bold" style={{color}}>1:{b.leverage.toLocaleString()}</div>
-                              <div className="text-[10px] text-slate-700">
-                                {b.feeType==="flat"||b.feeType==="spreadOnly"?"$0"
-                                  :b.feeType==="percent"?`${b.fee}%`
-                                  :b.feeType==="perLot"?`$${b.fee}/lot`
-                                  :b.feeType==="perShare"?`$${b.fee}/sh`
-                                  :`$${b.fee}/ct`}
+                              <div className="text-right ml-2 shrink-0">
+                                <div className="text-xs font-bold" style={{color}}>1:{b.leverage.toLocaleString()}</div>
+                                <div className="text-[10px] text-slate-700">
+                                  {b.feeType==="flat"||b.feeType==="spreadOnly"?"$0"
+                                    :b.feeType==="percent"?`${b.fee}%`
+                                    :b.feeType==="perLot"?`$${b.fee}/lot`
+                                    :b.feeType==="perShare"?`$${b.fee}/sh`
+                                    :`$${b.fee}/ct`}
+                                </div>
+                              </div>
+                            </button>
+                            {isCustom&&(
+                              <button onClick={()=>removeBroker(b.name)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-[11px] text-red-500 hover:text-red-300 transition-all px-1"
+                                title="Remove custom broker">✕</button>
+                            )}
+                          </div>);
+                        })}
+                      </div>
+
+                      {/* Add custom broker */}
+                      <div className="mt-3 border-t border-white/[0.05] pt-3">
+                        <button onClick={()=>setShowAdd(!showAddBrk)}
+                          className="w-full text-[10px] tracking-widest py-1.5 text-center flex items-center justify-center gap-1.5 transition-colors"
+                          style={{color:showAddBrk?color:"#475569"}}>
+                          <span>{showAddBrk?"▲":"＋"}</span>
+                          {showAddBrk?"Cancel":"Add custom broker"}
+                        </button>
+                        {showAddBrk&&(
+                          <div className="mt-2 space-y-2">
+                            <input value={newBrkName} onChange={e=>setNBName(e.target.value)}
+                              placeholder="Broker name" maxLength={40}
+                              className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-700 outline-none focus:border-white/20"/>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <div className="text-[9px] text-slate-600 mb-1 uppercase tracking-widest">Leverage</div>
+                                <input type="number" value={newBrkLev} onChange={e=>setNBLev(e.target.value)}
+                                  placeholder="100" min="1"
+                                  className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-700 outline-none focus:border-white/20"/>
+                              </div>
+                              <div>
+                                <div className="text-[9px] text-slate-600 mb-1 uppercase tracking-widest">Commission</div>
+                                <input type="number" value={newBrkFee} onChange={e=>setNBFee(e.target.value)}
+                                  placeholder="0" min="0" step="0.01"
+                                  className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white placeholder-slate-700 outline-none focus:border-white/20"/>
                               </div>
                             </div>
-                          </button>
-                        ))}
+                            <select value={newBrkType} onChange={e=>setNBType(e.target.value as FeeType)}
+                              className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white/20">
+                              <option value="perLot">$ per lot (Forex)</option>
+                              <option value="perContract">$ per contract (Futures/Options)</option>
+                              <option value="perShare">$ per share (Stocks)</option>
+                              <option value="percent">% per trade (Crypto)</option>
+                              <option value="flat">$0 / Free</option>
+                              <option value="spreadOnly">Spread only</option>
+                            </select>
+                            <button onClick={addBroker}
+                              className="w-full py-2 rounded-xl text-xs font-black transition-all"
+                              style={{background:color+"18",color,border:`1px solid ${color}40`}}>
+                              ＋ Add to {ASSETS[asset].label} list
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
