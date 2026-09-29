@@ -1,6 +1,132 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* ============================================
+   RetailBeastFX theme tokens (ported from tailwind.config.js)
+   Tailwind v4: theme extensions live in CSS via @theme
+   ============================================ */
+@theme {
+  /* Blue palette overridden with brand greens */
+  --color-blue-50: #E8FFF3;
+  --color-blue-100: #B9FFD8;
+  --color-blue-200: #69FFAE;
+  --color-blue-300: #00FF88;
+  --color-blue-400: #00E676;
+  --color-blue-500: #00C853;
+  --color-blue-600: #00A844;
+  --color-blue-700: #008836;
+  --color-blue-800: #006828;
+  --color-blue-900: #00481A;
+  --color-blue-950: #002A0F;
+
+  /* Cyberpunk base */
+  --color-beast-black: #000000;
+  --color-beast-black-50: #1E1E1E;
+  --color-beast-black-100: #121212;
+  --color-beast-black-200: #0A0A0A;
+
+  /* Neon green accent */
+  --color-beast-green: #00E676;
+  --color-beast-green-50: #E8FFF3;
+  --color-beast-green-100: #B9FFD8;
+  --color-beast-green-200: #69FFAE;
+  --color-beast-green-300: #00FF88;
+  --color-beast-green-400: #00E676;
+  --color-beast-green-500: #00C853;
+  --color-beast-green-600: #00A844;
+  --color-beast-green-glow: rgba(0, 230, 118, 0.5);
+
+  /* Warning/bearish red */
+  --color-beast-red: #FF5252;
+  --color-beast-red-50: #FFE8E8;
+  --color-beast-red-100: #FFBABA;
+  --color-beast-red-200: #FF8A8A;
+  --color-beast-red-300: #FF5252;
+  --color-beast-red-400: #FF1744;
+  --color-beast-red-glow: rgba(255, 82, 82, 0.5);
+
+  /* Win/gold accent */
+  --color-beast-gold: #FFD700;
+  --color-beast-gold-50: #FFFCE8;
+  --color-beast-gold-100: #FFF4B8;
+  --color-beast-gold-200: #FFEA70;
+  --color-beast-gold-300: #FFD700;
+  --color-beast-gold-glow: rgba(255, 215, 0, 0.5);
+
+  /* Cyberpunk surfaces */
+  --color-cyber-dark: #0f0f0f;
+  --color-cyber-surface: #1a1a2e;
+  --color-cyber-card: #16213e;
+  --color-cyber-border: #0f3460;
+
+  /* Fonts */
+  --font-orbitron: Orbitron, sans-serif;
+  --font-inter: Inter, sans-serif;
+
+  /* Animations */
+  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
+  --animate-neon-flicker: neon-flicker 0.5s ease-in-out infinite alternate;
+  --animate-slide-up: slide-up 0.5s ease-out;
+  --animate-slide-in-right: slide-in-right 0.3s ease-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-bounce-subtle: bounce-subtle 2s ease-in-out infinite;
+  --animate-confetti: confetti 1s ease-out forwards;
+  --animate-mascot-wave: mascot-wave 1s ease-in-out infinite;
+  --animate-glitch: glitch 0.3s ease-in-out;
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 5px rgba(0, 230, 118, 0.3), 0 0 10px rgba(0, 230, 118, 0.2); }
+    50% { box-shadow: 0 0 20px rgba(0, 230, 118, 0.6), 0 0 30px rgba(0, 230, 118, 0.4), 0 0 40px rgba(0, 230, 118, 0.2); }
+  }
+  @keyframes neon-flicker {
+    0% { opacity: 1; }
+    50% { opacity: 0.8; }
+    100% { opacity: 1; }
+  }
+  @keyframes slide-up {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-in-right {
+    0% { opacity: 0; transform: translateX(20px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes fade-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes bounce-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+  @keyframes confetti {
+    0% { transform: scale(0) rotate(0deg); opacity: 1; }
+    100% { transform: scale(1) rotate(360deg); opacity: 0; }
+  }
+  @keyframes mascot-wave {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+  }
+  @keyframes glitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 2px); }
+    40% { transform: translate(-2px, -2px); }
+    60% { transform: translate(2px, 2px); }
+    80% { transform: translate(2px, -2px); }
+    100% { transform: translate(0); }
+  }
+
+  /* Shadows */
+  --shadow-neon-green: 0 0 5px rgba(0, 230, 118, 0.3), 0 0 10px rgba(0, 230, 118, 0.2), 0 0 20px rgba(0, 230, 118, 0.1);
+  --shadow-neon-green-lg: 0 0 10px rgba(0, 230, 118, 0.4), 0 0 20px rgba(0, 230, 118, 0.3), 0 0 40px rgba(0, 230, 118, 0.2);
+  --shadow-neon-red: 0 0 5px rgba(255, 82, 82, 0.3), 0 0 10px rgba(255, 82, 82, 0.2);
+  --shadow-neon-gold: 0 0 5px rgba(255, 215, 0, 0.3), 0 0 10px rgba(255, 215, 0, 0.2);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* Backgrounds */
+  --background-image-cyber-gradient: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+  --background-image-neon-border: linear-gradient(90deg, #00E676, #00C853, #00E676);
+  --background-image-card-gradient: linear-gradient(135deg, rgba(22, 33, 62, 0.8) 0%, rgba(15, 15, 15, 0.9) 100%);
+}
 
 /* ============================================
    RetailBeastFX Trading Journal - Cyber Green Theme

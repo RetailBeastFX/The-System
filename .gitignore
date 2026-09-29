@@ -26,3 +26,11 @@ yarn-error.log*
 pnpm-debug.log*
 .vercel
 .env*.local
+# Build/test debris
+build_*.txt
+build.log
+build_output.txt
+typecheck_*.log
+ReportHistory*.html
+*.tsbuildinfo
+.firebase/
