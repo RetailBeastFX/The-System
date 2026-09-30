@@ -1,6 +1,0 @@
-﻿src/components/AQTApp.tsx(3267,21): error TS2345: Argument of type '(prev: Trade[]) => (Trade | Trade)[]' is not assignable to parameter of type 'SetStateAction<Trade[]>'.
-  Type '(prev: Trade[]) => (Trade | Trade)[]' is not assignable to type '(prevState: Trade[]) => Trade[]'.
-    Type '(Trade | Trade)[]' is not assignable to type 'Trade[]'.
-      Type 'Trade | Trade' is not assignable to type 'Trade'.
-        Type 'import("C:/Users/Owner/Desktop/AQTJournal-clean/src/types/index").Trade' is not assignable to type 'Trade'.
-          Property 'time' is optional in type 'Trade' but required in type 'Trade'.
