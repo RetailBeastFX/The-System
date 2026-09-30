@@ -48,8 +48,8 @@ const TRADE_FIELDS: { key: keyof Trade; label: string; required: boolean }[] = [
     { key: 'setup', label: 'Setup/Strategy', required: false },
     { key: 'emotion', label: 'Emotion/Mood', required: false },
     { key: 'notes', label: 'Notes', required: false },
-    { key: 'stopLoss', label: 'Stop Loss', required: false },
-    { key: 'takeProfit', label: 'Take Profit', required: false },
+    { key: 'sl', label: 'Stop Loss', required: false },
+    { key: 'tp', label: 'Take Profit', required: false },
 ];
 
 const ImportWizard: React.FC<ImportWizardProps> = ({

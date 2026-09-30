@@ -41,13 +41,13 @@ export function tradesToCSV(trades: Trade[]): string {
     const rows = trades.map(trade => [
         trade.date,
         trade.time || '',
-        trade.symbol,
+        trade.pair,
         trade.direction,
         trade.entry?.toString() || '',
         trade.exit?.toString() || '',
         trade.sl?.toString() || '',
         trade.tp?.toString() || '',
-        trade.size?.toString() || '',
+        trade.lots?.toString() || '',
         trade.pnl.toFixed(2),
         trade.pnl >= 0 ? 'Win' : 'Loss',
         trade.setup || '',
@@ -355,7 +355,7 @@ export function generateReportHTML(data: ReportData): string {
                 ${topWins.map(t => `
                     <tr>
                         <td>${t.date}</td>
-                        <td>${t.symbol}</td>
+                        <td>${t.pair}</td>
                         <td>${t.setup || '—'}</td>
                         <td class="positive">+$${t.pnl.toFixed(2)}</td>
                     </tr>
@@ -374,7 +374,7 @@ export function generateReportHTML(data: ReportData): string {
                 ${topLosses.map(t => `
                     <tr>
                         <td>${t.date}</td>
-                        <td>${t.symbol}</td>
+                        <td>${t.pair}</td>
                         <td>${t.setup || '—'}</td>
                         <td class="negative">$${t.pnl.toFixed(2)}</td>
                     </tr>

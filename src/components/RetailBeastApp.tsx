@@ -265,6 +265,11 @@ const ENTRY_TYPES = [
 ] as const;
 type EntryType = typeof ENTRY_TYPES[number];
 
+// The trade form only offers the curated ENTRY_TYPES above, but stored trades
+// may carry any canonical EntryType value. Validate before copying one in.
+const isFormEntryType = (v: string | undefined): v is EntryType =>
+  (ENTRY_TYPES as readonly string[]).includes(v ?? "");
+
 // Trade templates for quick trade entry
 const TRADE_TEMPLATES: { name: string; pair: string; setup: string }[] = [
   { name: "EUR/USD Breakout", pair: "EURUSD", setup: "Breakout" },
@@ -2958,7 +2963,7 @@ const RetailBeastApp: React.FC = () => {
       emotion: trade.emotion || "Calm",
       notes: "",
       imageUrl: "",
-      entryType: trade.entryType || "Breakout",
+      entryType: isFormEntryType(trade.entryType) ? trade.entryType : "Breakout",
     });
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -4647,7 +4652,7 @@ const RetailBeastApp: React.FC = () => {
           setup: t.setup || 'Unknown',
           emotion: t.emotion || 'Unknown',
           date: t.date,
-          time: t.time,
+          time: t.time || '',
           notes: t.notes,
         }))}
         stats={{

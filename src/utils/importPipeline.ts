@@ -36,7 +36,7 @@ export interface ParsedRow {
 
 // Column patterns for import field detection
 // This includes aliases and import-specific fields that get mapped to Trade properties
-const COLUMN_PATTERNS: Partial<Record<keyof Trade | 'symbol' | 'time' | 'size' | 'emotion' | 'stopLoss' | 'takeProfit' | 'timestamp', RegExp[]>> = {
+const COLUMN_PATTERNS: Partial<Record<keyof Trade | 'symbol' | 'size' | 'timestamp', RegExp[]>> = {
     id: [/^id$/i, /^trade.?id$/i, /^ticket$/i, /^order$/i, /^position$/i, /^deal$/i],
     pair: [/^pair$/i, /^symbol$/i, /^instrument$/i, /^market$/i, /^currency$/i],
     symbol: [/^symbol$/i, /^pair$/i, /^instrument$/i], // Alias for pair
@@ -52,10 +52,8 @@ const COLUMN_PATTERNS: Partial<Record<keyof Trade | 'symbol' | 'time' | 'size' |
     setup: [/^setup$/i, /^strategy$/i, /^pattern$/i, /^playbook$/i],
     emotion: [/^emotion$/i, /^mood$/i, /^feeling$/i, /^mental$/i],
     notes: [/^note/i, /^comment/i, /^remark/i, /^description$/i],
-    stopLoss: [/^stop/i, /^sl$/i, /^stop.?loss$/i, /^stoploss$/i],
-    takeProfit: [/^take.?profit$/i, /^tp$/i, /^target$/i, /^takeprofit$/i],
-    sl: [/^sl$/i, /^stop.?loss$/i], // Numeric stop loss
-    tp: [/^tp$/i, /^take.?profit$/i], // Numeric take profit
+    sl: [/^sl$/i, /^stop.?loss$/i, /^stop$/i], // Numeric stop loss
+    tp: [/^tp$/i, /^take.?profit$/i, /^target$/i], // Numeric take profit
     imageUrl: [/^image$/i, /^screenshot$/i, /^chart$/i],
     sessionType: [/^session$/i, /^market.?session$/i],
     tags: [/^tag/i, /^label/i, /^category$/i],
@@ -335,6 +333,7 @@ export function convertToTrades(
             ts: new Date(`${date}T${timeStr}`).getTime() || Date.now(),
             setup: getValue('setup') || 'Imported',
             mood: (getValue('mood') || undefined) as Trade['mood'],
+            emotion: getValue('emotion') || undefined,
             notes: getValue('notes') || '',
             sl: parseNumber(getValue('sl')) || undefined,
             tp: parseNumber(getValue('tp')) || undefined,

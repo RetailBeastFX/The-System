@@ -16,6 +16,7 @@ export interface Trade {
     lots: number;
     pnl: number;
     date: string;                    // YYYY-MM-DD
+    time?: string;                   // Time of day ("HH:MM" or locale string)
     ts: number;                      // Unix timestamp (immutable)
 
     // === RISK (numeric only) ===
@@ -28,6 +29,7 @@ export interface Trade {
     sessionType?: SessionType;
     entryType?: EntryType;
     mood?: MoodType;                 // Single emotion field
+    emotion?: string;                // Free-form emotion label (imports, legacy data)
     accountId?: string;
     source?: 'manual' | 'metaapi' | 'csv' | 'ctrader';
     tags?: string[];
@@ -48,7 +50,7 @@ export interface Trade {
 }
 
 // Canonical type definitions
-export type SessionType = 'London' | 'NewYork' | 'Tokyo' | 'Sydney' | 'Frankfurt' | 'London-NY Overlap' | 'Asian' | 'Off-Hours' | 'News Event';
+export type SessionType = 'London' | 'NewYork' | 'Tokyo' | 'Sydney' | 'Frankfurt' | 'London-NY Overlap' | 'Overlap' | 'Asian' | 'Off-Hours' | 'News Event';
 export type EntryType = 'Breakout' | 'Pullback' | 'Reversal' | 'Fade' | 'Momentum' | 'Scalp' | 'Swing' | 'Position';
 export type MoodType = 'confident' | 'fearful' | 'neutral' | 'greedy' | 'disciplined' | 'anxious' | 'calm';
 

@@ -4047,6 +4047,9 @@ const AQTApp: React.FC = () => {
               ...t,
               id: `imported-${Date.now()}-${i}`,
               ts: t.ts || new Date(t.date).getTime(),
+              time: t.time ?? formatTime(t.ts || Date.now()),
+              emotion: t.emotion ?? 'Unknown',
+              notes: t.notes ?? '',
               accountId: accountId
             })) as Trade[];
 
